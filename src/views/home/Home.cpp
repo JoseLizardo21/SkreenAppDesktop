@@ -1,7 +1,18 @@
 #include "Home.h"
 #include <iostream>
+#include "../../services/media/gstreamermanager/GStreamerManager.h"
 
 static void on_button_clicked(GtkWidget* widget, gpointer data) {
+    GStreamerManager* capture_manager_{nullptr};
+    // 2. AHORA crear el pipeline (rápido, ~50ms)
+    capture_manager_ = new GStreamerManager();
+
+    // capture_manager_->initializePipeline(fd, node_id, 1280, 720);
+
+    // 3. Iniciar captura inmediatamente
+    capture_manager_->startCapture();
+
+    std::cout << "✅ Captura iniciada\n";
     std::cout << "Hola" << std::endl;
 }
 
