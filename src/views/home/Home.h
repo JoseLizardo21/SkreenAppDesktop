@@ -5,9 +5,11 @@
 
 class Home {
     public:
-    Home();
-    void displayHome();
-    void display();
+        Home();
+        void show();
+    private:
+        GtkWidget* window;
+
 };
 
 #endif
