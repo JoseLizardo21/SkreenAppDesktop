@@ -18,9 +18,10 @@ Home::Home() {
 
     // Botón
     GtkWidget* button = gtk_button_new_with_label("Saludar");
+    gtk_widget_set_size_request(button, 200, 50);
     g_signal_connect(button, "clicked", G_CALLBACK(on_button_clicked), NULL);
 
-    gtk_box_pack_start(GTK_BOX(box), button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), button, FALSE, FALSE, 0);
 }
 
 void Home::show() {
