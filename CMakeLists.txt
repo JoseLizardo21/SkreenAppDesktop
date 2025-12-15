@@ -6,7 +6,7 @@ project(SkreenDesktop VERSION 1.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Buscar GTK y GStreamer
+# Buscar GTK, GStreamer, DBus
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED gtk+-3.0)
 pkg_check_modules(GSTREAMER REQUIRED
@@ -14,12 +14,14 @@ pkg_check_modules(GSTREAMER REQUIRED
     gstreamer-app-1.0
     gstreamer-webrtc-1.0
 )
+pkg_check_modules(DBUS REQUIRED dbus-1)
 
 # Incluir directorios de headers
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
     ${GTK_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
+    ${DBUS_INCLUDE_DIRS}
 )
 
 # Añadir directorios de librerías
@@ -46,4 +48,5 @@ target_link_libraries(skreen_desktop
     gstreamer_manager
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
+    ${DBUS_LIBRARIES}
 )
