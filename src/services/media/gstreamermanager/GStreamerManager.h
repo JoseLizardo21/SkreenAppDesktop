@@ -2,7 +2,6 @@
 #define GSTREAMER_MANAGER_H
 
 #include <gst/gst.h>
-#include <gst/app/gstappsink.h>
 #include <gst/webrtc/webrtc.h>
 #include <functional>
 #include <cstdint>
@@ -58,7 +57,6 @@ private:
     GstElement* videoscale_{nullptr};
     GstElement* capsfilter_scale_{nullptr};
     GstElement* videoconvert2_{nullptr};
-    GstElement* appsink_{nullptr};
 
     // ========== NUEVO: WebRTC elements ==========
     GstElement* tee_{nullptr};              // Divide stream en 2 ramas
@@ -87,7 +85,6 @@ private:
     bool configurePipeWireSource();
     bool configureFrameRateFilter();
     bool configureScalingFilter();
-    bool configureAppSink();
     bool linkElements();
     bool setupBusHandler();
 

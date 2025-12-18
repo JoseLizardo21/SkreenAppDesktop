@@ -3,6 +3,7 @@
 
 #include <memory>
 #include "../../services/system/portalmanager/PortalManager.h"
+#include "../../services/media/gstreamermanager/GStreamerManager.h"
 
 // Forward declaration
 class Home;
@@ -12,10 +13,16 @@ class HomeController {
         HomeController(Home* view);
         ~HomeController();
         void handleRequestPermissions();
+        void onPortalComplete(const std::string& session_handle,
+                              uint32_t node_id,
+                              int fd);
+        void onGStreamerError(const std::string& message);
+        void handleStopCapture();
         void initializeDBusConnection();
     private:
         Home* view_;
         std::unique_ptr<PortalManager> portal_manager_;
+        std::unique_ptr<GStreamerManager> gstreamer_manager_;
 };
 
 #endif

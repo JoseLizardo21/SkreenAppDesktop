@@ -38,7 +38,6 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id, int width, i
     if (!configurePipeWireSource() ||
         !configureFrameRateFilter() ||
         !configureScalingFilter() ||
-        !configureAppSink() ||
         !linkElements() ||
         !setupBusHandler()) {
         cleanup();
@@ -59,10 +58,9 @@ bool GStreamerManager::createElements() {
     videoscale_ = gst_element_factory_make("videoscale", "scale");
     capsfilter_scale_ = gst_element_factory_make("capsfilter", "filter_scale");
     videoconvert2_ = gst_element_factory_make("videoconvert", "convert2");
-    appsink_ = gst_element_factory_make("appsink", "sink");
 
     if (!pipewiresrc_ || !videoconvert1_ || !videorate_ || !capsfilter_rate_ ||
-        !videoscale_ || !capsfilter_scale_ || !videoconvert2_ || !appsink_) {
+        !videoscale_ || !capsfilter_scale_ || !videoconvert2_) {
         error("Failed to create GStreamer elements");
         return false;
     }
@@ -111,26 +109,6 @@ bool GStreamerManager::configureScalingFilter() {
     return true;
 }
 
-bool GStreamerManager::configureAppSink() {
-    std::cout << "  Configuring app sink...\n";
-
-    GstCaps* sink_caps = gst_caps_new_simple("video/x-raw",
-                                             "format", G_TYPE_STRING, "RGB",
-                                             NULL);
-    g_object_set(G_OBJECT(appsink_),
-                 "emit-signals", TRUE,
-                 "sync", FALSE,
-                 "max-buffers", 1,
-                 "drop", TRUE,
-                 "caps", sink_caps,
-                 NULL);
-    gst_caps_unref(sink_caps);
-
-    // g_signal_connect(appsink_, "new-sample", G_CALLBACK(onNewSample), this);
-
-    std::cout << "  ✓ App sink configured\n";
-    return true;
-}
 
 bool GStreamerManager::linkElements() {
     std::cout << "  Linking pipeline elements...\n";
@@ -145,7 +123,6 @@ bool GStreamerManager::linkElements() {
                      videoscale_,
                      capsfilter_scale_,
                      videoconvert2_,
-                     appsink_,
                      NULL);
 
     if (!gst_element_link_many(pipewiresrc_,
@@ -155,7 +132,6 @@ bool GStreamerManager::linkElements() {
                                videoscale_,
                                capsfilter_scale_,
                                videoconvert2_,
-                               appsink_,
                                NULL)) {
         error("Failed to link pipeline elements");
         return false;
@@ -257,29 +233,6 @@ GstBusSyncReply GStreamerManager::onBusMessage(GstBus* bus, GstMessage* message,
     return GST_BUS_PASS;
 }
 
-void GStreamerManager::handleSample(GstSample* sample) {
-    GstBuffer* buffer = gst_sample_get_buffer(sample);
-    if (!buffer) {
-        return;
-    }
-
-    GstMapInfo map;
-    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-        return;
-    }
-
-    // Frame dimensions (from current configuration)
-    int width = frame_width_;
-    int height = frame_height_;
-
-    // Call the frame callback with RGB data
-    if (frame_callback_) {
-        frame_callback_(map.data, width, height);
-    }
-
-    gst_buffer_unmap(buffer, &map);
-}
-
 void GStreamerManager::cleanup() {
     if (pipeline_) {
         gst_object_unref(pipeline_);
@@ -291,7 +244,6 @@ void GStreamerManager::cleanup() {
         videoscale_ = nullptr;
         capsfilter_scale_ = nullptr;
         videoconvert2_ = nullptr;
-        appsink_ = nullptr;
     }
 }
 
@@ -460,10 +412,6 @@ bool GStreamerManager::linkWebRTCBranch() {
                      rtph264pay_,
                      webrtcbin_,
                      NULL);
-
-    // IMPORTANTE: Insertar el tee ANTES del videoconvert2_
-    // Desvincular videoconvert2_ -> appsink_
-    gst_element_unlink(videoconvert2_, appsink_);
 
     // Nueva topología:
     // ... -> videoconvert2_ -> tee
