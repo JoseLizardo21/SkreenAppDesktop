@@ -46,6 +46,8 @@ add_executable(skreen_desktop main.cpp)
 target_link_libraries(skreen_desktop
     home_view
     gstreamer_manager
+    home_controller
+    portal_manager
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
     ${DBUS_LIBRARIES}
