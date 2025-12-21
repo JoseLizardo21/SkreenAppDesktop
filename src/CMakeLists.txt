@@ -5,6 +5,7 @@ add_subdirectory(controller/Homecontroller)
 
 # Añadir subdirectorios de servicios
 add_subdirectory(services/system/portalmanager)
+add_subdirectory(services/websocketclient)
 
 # Añadir subdirectorios de vistas
 add_subdirectory(views/home)
