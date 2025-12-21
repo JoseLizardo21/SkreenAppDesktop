@@ -76,7 +76,7 @@ void PortalManager::stop() {
 }
 
 void PortalManager::createSession() {
-    std::cout << "Calling CreateSession on portal...\n";
+    // std::cout << "Calling CreateSession on portal...\n";
 
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
@@ -120,8 +120,6 @@ void PortalManager::selectSources() {
         error("Cannot select sources: no session handle");
         return;
     }
-
-    std::cout << "Calling SelectSources...\n";
 
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
@@ -293,11 +291,11 @@ void PortalManager::openPipeWireRemote() {
                               DBUS_TYPE_UNIX_FD, &fd,
                               DBUS_TYPE_INVALID)) {
         pipewire_fd_ = fd;
-        std::cout << "PipeWire FD obtained: " << pipewire_fd_ << "\n";
-        std::cout << "Portal workflow complete!\n";
-        std::cout << "   Session: " << session_handle_ << "\n";
-        std::cout << "   PipeWire Node ID: " << pipewire_node_id_ << "\n";
-        std::cout << "   PipeWire FD: " << pipewire_fd_ << "\n";
+        // std::cout << "PipeWire FD obtained: " << pipewire_fd_ << "\n";
+        // std::cout << "Portal workflow complete!\n";
+        // std::cout << "   Session: " << session_handle_ << "\n";
+        // std::cout << "   PipeWire Node ID: " << pipewire_node_id_ << "\n";
+        // std::cout << "   PipeWire FD: " << pipewire_fd_ << "\n";
 
         // Call the success callback
         if (portal_callback_) {
@@ -324,7 +322,6 @@ DBusHandlerResult PortalManager::onPortalSignal(DBusConnection* conn, DBusMessag
 
 void PortalManager::processSignal(DBusMessage* msg) {
     const char* path = dbus_message_get_path(msg);
-    std::cout << "Response from: " << path << "\n";
 
     DBusMessageIter args;
     dbus_message_iter_init(msg, &args);

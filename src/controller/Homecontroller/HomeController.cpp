@@ -7,6 +7,8 @@
 HomeController::HomeController(Home* view)
     : view_(view) {
     portal_manager_ = std::make_unique<PortalManager>();
+    gstreamer_manager_ = std::make_unique<GStreamerManager>();
+    
     portal_manager_->setPortalCallback(
         [this](const std::string& session_handle, uint32_t node_id, int fd) {
             onPortalComplete(session_handle, node_id, fd);
@@ -29,11 +31,11 @@ void HomeController::handleRequestPermissions() {
 void HomeController::onPortalComplete(const std::string& session_handle,
                                          uint32_t node_id,
                                          int fd) {
-    std::cout << "Portal workflow complete\n";
-    std::cout << "   Session: " << session_handle << "\n";
-    std::cout << "   Node ID: " << node_id << "\n";
-    std::cout << "   FD: " << fd << "\n";
-
+    // std::cout << "Portal workflow complete\n";
+    // std::cout << "   Session: " << session_handle << "\n";
+    // std::cout << "   Node ID: " << node_id << "\n";
+    // std::cout << "   FD: " << fd << "\n";
+    
     // Update capture session
     // if (capture_session_) {
     //     capture_session_->onPortalComplete(session_handle, node_id, fd);
