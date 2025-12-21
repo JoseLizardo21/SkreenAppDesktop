@@ -76,7 +76,7 @@ void PortalManager::stop() {
 }
 
 void PortalManager::createSession() {
-    std::cout << "📞 Calling CreateSession on portal...\n";
+    std::cout << "Calling CreateSession on portal...\n";
 
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
