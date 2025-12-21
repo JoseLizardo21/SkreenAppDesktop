@@ -1,4 +1,5 @@
 #define GST_USE_UNSTABLE_API
+#include "../../websocketclient/WebSocketClient.h"
 #include "GStreamerManager.h"
 #include <iostream>
 #include <cstring>
@@ -355,26 +356,88 @@ void GStreamerManager::disableWebRTC() {
 bool GStreamerManager::createWebRTCElements() {
     std::cout << "  Creando elementos WebRTC...\n";
     
+    // Elementos base
     tee_ = gst_element_factory_make("tee", "tee");
+    queue_preview_ = gst_element_factory_make("queue", "queue_preview");
+    appsink_ = gst_element_factory_make("fakesink", "preview");
     queue_webrtc_ = gst_element_factory_make("queue", "queue_webrtc");
     videoconvert_webrtc_ = gst_element_factory_make("videoconvert", "convert_webrtc");
-    x264enc_ = gst_element_factory_make("x264enc", "encoder");
-    rtph264pay_ = gst_element_factory_make("rtph264pay", "payloader");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtc");
     
-    // Configurar encoder para baja latencia
-    g_object_set(G_OBJECT(x264enc_),
-                 "tune", 0x00000004,  // zerolatency
-                 "speed-preset", 1,   // ultrafast
-                 "bitrate", 2000,     // 2 Mbps
-                 "key-int-max", 30,   // Keyframe cada 30 frames
-                 NULL);
+    // ========== INTENTAR x264 PRIMERO ==========
+    x264enc_ = gst_element_factory_make("x264enc", "encoder");
     
-    // Configurar RTP payloader
-    g_object_set(G_OBJECT(rtph264pay_),
-                 "config-interval", 1,  // Enviar SPS/PPS con cada keyframe
-                 "pt", 96,              // Payload type
-                 NULL);
+    if (x264enc_) {
+        // x264 disponible
+        std::cout << "  ✓ Usando H.264 (x264enc)\n";
+        rtph264pay_ = gst_element_factory_make("rtph264pay", "payloader");
+        
+        if (!rtph264pay_) {
+            error("Failed to create rtph264pay");
+            gst_object_unref(x264enc_);
+            x264enc_ = nullptr;
+            return false;
+        }
+        
+        // Configurar x264
+        g_object_set(G_OBJECT(x264enc_),
+                     "tune", 0x00000004,      // zerolatency
+                     "speed-preset", 1,       // ultrafast
+                     "bitrate", 2000,         // 2 Mbps
+                     "key-int-max", 30,
+                     NULL);
+        
+        g_object_set(G_OBJECT(rtph264pay_),
+                     "config-interval", 1,
+                     "pt", 96,
+                     NULL);
+    } else {
+        // ========== FALLBACK A VP8 ==========
+        std::cout << "  ℹ️  x264enc no disponible, usando VP8\n";
+        
+        x264enc_ = gst_element_factory_make("vp8enc", "encoder");
+        rtph264pay_ = gst_element_factory_make("rtpvp8pay", "payloader");
+        
+        if (!x264enc_ || !rtph264pay_) {
+            error("No hay encoder de video disponible (intenté x264 y vp8)");
+            
+            // Debug detallado
+            if (!x264enc_) std::cerr << "  ❌ vp8enc tampoco está disponible\n";
+            if (!rtph264pay_) std::cerr << "  ❌ rtpvp8pay no está disponible\n";
+            
+            return false;
+        }
+        
+        // Configurar VP8
+        g_object_set(G_OBJECT(x264enc_),
+                     "deadline", 1,              // Realtime
+                     "target-bitrate", 2000000,  // 2 Mbps
+                     "cpu-used", 4,              // Velocidad de encoding
+                     "keyframe-max-dist", 30,
+                     NULL);
+        
+        g_object_set(G_OBJECT(rtph264pay_),
+                     "pt", 96,
+                     NULL);
+    }
+    
+    // ========== VERIFICAR TODOS LOS ELEMENTOS ==========
+    if (!tee_ || !queue_preview_ || !appsink_ || !queue_webrtc_ ||
+        !videoconvert_webrtc_ || !x264enc_ || !rtph264pay_ || !webrtcbin_) {
+        error("Failed to create one or more WebRTC elements");
+        
+        // Debug detallado
+        if (!tee_) std::cerr << "  ❌ tee\n";
+        if (!queue_preview_) std::cerr << "  ❌ queue_preview\n";
+        if (!appsink_) std::cerr << "  ❌ appsink\n";
+        if (!queue_webrtc_) std::cerr << "  ❌ queue_webrtc\n";
+        if (!videoconvert_webrtc_) std::cerr << "  ❌ videoconvert_webrtc\n";
+        if (!x264enc_) std::cerr << "  ❌ encoder\n";
+        if (!rtph264pay_) std::cerr << "  ❌ payloader\n";
+        if (!webrtcbin_) std::cerr << "  ❌ webrtcbin\n";
+        
+        return false;
+    }
     
     // Configurar WebRTC
     g_object_set(G_OBJECT(webrtcbin_),
@@ -387,55 +450,89 @@ bool GStreamerManager::createWebRTCElements() {
 }
 
 bool GStreamerManager::linkWebRTCBranch() {
-    if (!pipeline_ || !tee_) {
+    if (!pipeline_) {
+        error("Pipeline not initialized");
         return false;
     }
 
     std::cout << "  Enlazando rama WebRTC...\n";
 
-    // Pausar el pipeline para modificarlo de forma segura
+    // ========== Pausar pipeline ==========
     GstState current_state, pending_state;
     gst_element_get_state(pipeline_, &current_state, &pending_state, 0);
 
     if (current_state == GST_STATE_PLAYING) {
-        std::cout << "  Pausando pipeline para modificación...\n";
+        std::cout << "  Pausando pipeline...\n";
         gst_element_set_state(pipeline_, GST_STATE_PAUSED);
         gst_element_get_state(pipeline_, NULL, NULL, GST_CLOCK_TIME_NONE);
     }
 
-    // Añadir elementos al pipeline
+    // ========== Configurar fakesink ==========
+    g_object_set(G_OBJECT(appsink_), "sync", FALSE, NULL);
+
+    // ========== Añadir TODOS los elementos nuevos al pipeline ==========
     gst_bin_add_many(GST_BIN(pipeline_),
                      tee_,
-                     queue_webrtc_,
-                     videoconvert_webrtc_,
-                     x264enc_,
-                     rtph264pay_,
-                     webrtcbin_,
+                     queue_preview_,
+                     appsink_,
+                     queue_webrtc_,           // ✅ AÑADIR
+                     videoconvert_webrtc_,    // ✅ AÑADIR
+                     x264enc_,                // ✅ AÑADIR
+                     rtph264pay_,             // ✅ AÑADIR
+                     webrtcbin_,              // ✅ AÑADIR
                      NULL);
 
-    // Nueva topología:
-    // ... -> videoconvert2_ -> tee
-    //                          tee -> queue_preview -> appsink (preview local)
-    //                          tee -> queue_webrtc -> videoconvert_webrtc -> x264enc -> rtph264pay -> webrtcbin
+    // ========== Desenlazar videoconvert2 (si estaba enlazado) ==========
+    GstPad* convert2_src = gst_element_get_static_pad(videoconvert2_, "src");
+    if (convert2_src) {
+        GstPad* peer = gst_pad_get_peer(convert2_src);
+        if (peer) {
+            gst_pad_unlink(convert2_src, peer);
+            gst_object_unref(peer);
+        }
+        gst_object_unref(convert2_src);
+    }
 
+    // ========== Enlazar: videoconvert2 → tee ==========
     if (!gst_element_link(videoconvert2_, tee_)) {
         error("Failed to link videoconvert2 to tee");
         return false;
     }
 
-    // Rama 2: WebRTC
-    if (!gst_element_link_many(tee_, queue_webrtc_, videoconvert_webrtc_,
-                               x264enc_, rtph264pay_, NULL)) {
+    // ========== Rama 1: Preview (tee → queue_preview → appsink) ==========
+    if (!gst_element_link_many(tee_, queue_preview_, appsink_, NULL)) {
+        error("Failed to link preview branch");
+        return false;
+    }
+
+    // ========== Rama 2: WebRTC (tee → queue_webrtc → ... → rtph264pay) ==========
+    if (!gst_element_link_many(tee_,
+                               queue_webrtc_,
+                               videoconvert_webrtc_,
+                               x264enc_,
+                               rtph264pay_,
+                               NULL)) {
         error("Failed to link WebRTC encoding chain");
         return false;
     }
 
-    // Conectar RTP payloader a webrtcbin
+    // ========== Conectar rtph264pay → webrtcbin ==========
     GstPad* payloader_src = gst_element_get_static_pad(rtph264pay_, "src");
-    GstPad* webrtc_sink = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
+    if (!payloader_src) {
+        error("Failed to get payloader src pad");
+        return false;
+    }
 
-    if (gst_pad_link(payloader_src, webrtc_sink) != GST_PAD_LINK_OK) {
-        error("Failed to link payloader to webrtcbin");
+    GstPad* webrtc_sink = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
+    if (!webrtc_sink) {
+        error("Failed to request webrtcbin sink pad");
+        gst_object_unref(payloader_src);
+        return false;
+    }
+
+    GstPadLinkReturn link_ret = gst_pad_link(payloader_src, webrtc_sink);
+    if (link_ret != GST_PAD_LINK_OK) {
+        error("Failed to link payloader to webrtcbin: " + std::to_string(link_ret));
         gst_object_unref(payloader_src);
         gst_object_unref(webrtc_sink);
         return false;
@@ -444,21 +541,23 @@ bool GStreamerManager::linkWebRTCBranch() {
     gst_object_unref(payloader_src);
     gst_object_unref(webrtc_sink);
 
-    // Sincronizar el estado de los nuevos elementos con el pipeline
+    // ========== Sincronizar estado de TODOS los elementos nuevos ==========
     gst_element_sync_state_with_parent(tee_);
+    gst_element_sync_state_with_parent(queue_preview_);
+    gst_element_sync_state_with_parent(appsink_);
     gst_element_sync_state_with_parent(queue_webrtc_);
     gst_element_sync_state_with_parent(videoconvert_webrtc_);
     gst_element_sync_state_with_parent(x264enc_);
     gst_element_sync_state_with_parent(rtph264pay_);
     gst_element_sync_state_with_parent(webrtcbin_);
 
-    // Reanudar el pipeline
+    // ========== Reanudar pipeline ==========
     if (current_state == GST_STATE_PLAYING) {
         std::cout << "  Reanudando pipeline...\n";
         gst_element_set_state(pipeline_, GST_STATE_PLAYING);
     }
 
-    std::cout << "  ✓ Rama WebRTC enlazada\n";
+    std::cout << "  ✓ Rama WebRTC enlazada exitosamente\n";
     return true;
 }
 
@@ -525,33 +624,33 @@ void GStreamerManager::onIceCandidate(GstElement* /* webrtc */, guint mlineindex
 }
 
 void GStreamerManager::connectToSignalingServer() {
-    // std::cout << "🔌 Connecting to signaling server: " << signaling_server_ << "\n";
+    std::cout << "Connecting to signaling server: " << signaling_server_ << "\n";
     
-    // ws_client_ = std::make_shared<WebSocketClient>(signaling_server_);
+    ws_client_ = std::make_shared<WebSocketClient>(signaling_server_);
     
-    // // ========== Configurar callbacks WebRTC ==========
+    // ========== Configurar callbacks WebRTC ==========
     
-    // // Callback para SDP (offer/answer)
-    // ws_client_->setOnSDPCallback([this](const std::string& type, const std::string& sdp) {
-    //     std::cout << "📥 Callback SDP activado: " << type << "\n";
-    //     handleRemoteSDP(type, sdp);
-    // });
+    // Callback para SDP (offer/answer)
+    ws_client_->setOnSDPCallback([this](const std::string& type, const std::string& sdp) {
+        std::cout << "📥 Callback SDP activado: " << type << "\n";
+        handleRemoteSDP(type, sdp);
+    });
     
-    // // Callback para ICE candidates
-    // ws_client_->setOnICECandidateCallback([this](int mline_index, const std::string& candidate) {
-    //     std::cout << "🧊 Callback ICE activado (mline: " << mline_index << ")\n";
-    //     handleRemoteICE(mline_index, candidate);
-    // });
+    // Callback para ICE candidates
+    ws_client_->setOnICECandidateCallback([this](int mline_index, const std::string& candidate) {
+        std::cout << "🧊 Callback ICE activado (mline: " << mline_index << ")\n";
+        handleRemoteICE(mline_index, candidate);
+    });
     
-    // // Callback opcional para mensajes generales
-    // ws_client_->setOnMessageCallback([](const std::string& msg) {
-    //     std::cout << "📨 Mensaje WebSocket raw: " << msg << "\n";
-    // });
+    // Callback opcional para mensajes generales
+    ws_client_->setOnMessageCallback([](const std::string& msg) {
+        std::cout << "📨 Mensaje WebSocket raw: " << msg << "\n";
+    });
     
-    // // Conectar
-    // ws_client_->connect();
+    // Conectar
+    ws_client_->connect();
     
-    // std::cout << "✅ WebSocket client configurado\n";
+    std::cout << "✅ WebSocket client configurado\n";
 }
 
 void GStreamerManager::sendSDP(const std::string& type, const std::string& sdp) {
@@ -588,7 +687,7 @@ void GStreamerManager::sendICECandidate(guint mline_index, const std::string& ca
 }
 
 void GStreamerManager::handleRemoteSDP(const std::string& type, const std::string& sdp) {
-    std::cout << "📥 Procesando remote " << type << " SDP...\n";
+    // std::cout << "📥 Procesando remote " << type << " SDP...\n";
     
     if (!webrtcbin_) {
         std::cerr << "❌ webrtcbin no inicializado\n";
@@ -640,7 +739,7 @@ void GStreamerManager::handleRemoteSDP(const std::string& type, const std::strin
                 
                 gst_webrtc_session_description_free(answer);
                 
-                std::cout << "✅ Answer creado y enviado\n";
+                // std::cout << "✅ Answer creado y enviado\n";
             }, 
             this, NULL
         );
