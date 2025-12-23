@@ -307,31 +307,29 @@ bool GStreamerManager::enableWebRTC(const std::string& signaling_server) {
         std::cout << "⚠️ WebRTC ya está habilitado\n";
         return true;
     }
-    
+
     signaling_server_ = signaling_server;
-    
+
     std::cout << "🌐 Habilitando WebRTC...\n";
-    
+
     if (!createWebRTCElements()) {
         error("Failed to create WebRTC elements");
         return false;
     }
-    
+
     if (!linkWebRTCBranch()) {
         error("Failed to link WebRTC branch");
         return false;
     }
-    
+
+    // Configurar callbacks DESPUÉS de enlazar todo
     setupWebRTCCallbacks();
+
+    // Conectar al servidor de señalización DESPUÉS de configurar callbacks
     connectToSignalingServer();
 
     webrtc_enabled_ = true;
     std::cout << "✅ WebRTC habilitado\n";
-
-    // Forzar negociación después de un pequeño delay para asegurar que todo esté listo
-    // La señal "on-negotiation-needed" debería dispararse automáticamente,
-    // pero lo forzamos para asegurar que la oferta se cree
-    std::cout << "  Esperando a que WebSocket se conecte...\n";
 
     return true;
 }
@@ -475,11 +473,11 @@ bool GStreamerManager::linkWebRTCBranch() {
                      tee_,
                      queue_preview_,
                      appsink_,
-                     queue_webrtc_,           // ✅ AÑADIR
-                     videoconvert_webrtc_,    // ✅ AÑADIR
-                     x264enc_,                // ✅ AÑADIR
-                     rtph264pay_,             // ✅ AÑADIR
-                     webrtcbin_,              // ✅ AÑADIR
+                     queue_webrtc_,
+                     videoconvert_webrtc_,
+                     x264enc_,
+                     rtph264pay_,
+                     webrtcbin_,
                      NULL);
 
     // ========== Desenlazar videoconvert2 (si estaba enlazado) ==========
@@ -499,15 +497,60 @@ bool GStreamerManager::linkWebRTCBranch() {
         return false;
     }
 
-    // ========== Rama 1: Preview (tee → queue_preview → appsink) ==========
-    if (!gst_element_link_many(tee_, queue_preview_, appsink_, NULL)) {
-        error("Failed to link preview branch");
+    // ========== Rama 1: Preview usando request pad ==========
+    GstPad* tee_preview_pad = gst_element_request_pad_simple(tee_, "src_%u");
+    if (!tee_preview_pad) {
+        error("Failed to get tee preview src pad");
         return false;
     }
 
-    // ========== Rama 2: WebRTC (tee → queue_webrtc → ... → rtph264pay) ==========
-    if (!gst_element_link_many(tee_,
-                               queue_webrtc_,
+    GstPad* queue_preview_sink = gst_element_get_static_pad(queue_preview_, "sink");
+    if (!queue_preview_sink) {
+        error("Failed to get queue_preview sink pad");
+        gst_object_unref(tee_preview_pad);
+        return false;
+    }
+
+    if (gst_pad_link(tee_preview_pad, queue_preview_sink) != GST_PAD_LINK_OK) {
+        error("Failed to link tee to queue_preview");
+        gst_object_unref(tee_preview_pad);
+        gst_object_unref(queue_preview_sink);
+        return false;
+    }
+    gst_object_unref(tee_preview_pad);
+    gst_object_unref(queue_preview_sink);
+
+    // Enlazar resto de rama preview
+    if (!gst_element_link(queue_preview_, appsink_)) {
+        error("Failed to link queue_preview to appsink");
+        return false;
+    }
+
+    // ========== Rama 2: WebRTC usando request pad ==========
+    GstPad* tee_webrtc_pad = gst_element_request_pad_simple(tee_, "src_%u");
+    if (!tee_webrtc_pad) {
+        error("Failed to get tee webrtc src pad");
+        return false;
+    }
+
+    GstPad* queue_webrtc_sink = gst_element_get_static_pad(queue_webrtc_, "sink");
+    if (!queue_webrtc_sink) {
+        error("Failed to get queue_webrtc sink pad");
+        gst_object_unref(tee_webrtc_pad);
+        return false;
+    }
+
+    if (gst_pad_link(tee_webrtc_pad, queue_webrtc_sink) != GST_PAD_LINK_OK) {
+        error("Failed to link tee to queue_webrtc");
+        gst_object_unref(tee_webrtc_pad);
+        gst_object_unref(queue_webrtc_sink);
+        return false;
+    }
+    gst_object_unref(tee_webrtc_pad);
+    gst_object_unref(queue_webrtc_sink);
+
+    // Enlazar resto de rama WebRTC
+    if (!gst_element_link_many(queue_webrtc_,
                                videoconvert_webrtc_,
                                x264enc_,
                                rtph264pay_,
@@ -562,7 +605,12 @@ bool GStreamerManager::linkWebRTCBranch() {
 }
 
 void GStreamerManager::setupWebRTCCallbacks() {
-    // std::cout << "  Configurando callbacks WebRTC...\n";
+    std::cout << "  Configurando callbacks WebRTC...\n";
+
+    if (!webrtcbin_) {
+        std::cerr << "❌ Error: webrtcbin_ es nullptr\n";
+        return;
+    }
 
     // Callback cuando se necesita negociación
     g_signal_connect(webrtcbin_, "on-negotiation-needed",
@@ -572,46 +620,68 @@ void GStreamerManager::setupWebRTCCallbacks() {
     g_signal_connect(webrtcbin_, "on-ice-candidate",
                      G_CALLBACK(onIceCandidate), this);
 
-    // Crear un transceiver de video para disparar la negociación
-    // Esto asegura que webrtcbin sepa que queremos enviar video
-    GstWebRTCRTPTransceiverDirection direction = GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY;
-    g_signal_emit_by_name(webrtcbin_, "add-transceiver", direction, NULL);
-
     std::cout << "  ✓ Callbacks WebRTC configurados\n";
-    std::cout << "  ✓ Transceiver de video añadido\n";
 }
 
 void GStreamerManager::onNegotiationNeeded(GstElement* webrtc, gpointer user_data) {
     GStreamerManager* self = static_cast<GStreamerManager*>(user_data);
-    
+
+    if (!self) {
+        std::cerr << "❌ Error: self es nullptr en onNegotiationNeeded\n";
+        return;
+    }
+
     std::cout << "🤝 Negotiation needed - Creating offer...\n";
-    
+
+    // Verificar que el WebSocket esté conectado antes de crear la oferta
+    if (!self->ws_client_ || !self->ws_client_->isConnected()) {
+        std::cout << "⚠️ WebSocket no conectado aún, retrasando negociación...\n";
+        return;
+    }
+
     // Crear promise para la oferta
     GstPromise* promise = gst_promise_new_with_change_func(onOfferCreated, self, NULL);
-    
+
     // Crear oferta SDP
     g_signal_emit_by_name(webrtc, "create-offer", NULL, promise);
 }
 
 void GStreamerManager::onOfferCreated(GstPromise* promise, gpointer user_data) {
     GStreamerManager* self = static_cast<GStreamerManager*>(user_data);
-    
+
+    if (!self || !promise) {
+        std::cerr << "❌ Error: puntero nulo en onOfferCreated\n";
+        if (promise) gst_promise_unref(promise);
+        return;
+    }
+
     const GstStructure* reply = gst_promise_get_reply(promise);
+    if (!reply) {
+        std::cerr << "❌ Error: no se pudo obtener respuesta de promise\n";
+        gst_promise_unref(promise);
+        return;
+    }
+
     GstWebRTCSessionDescription* offer = NULL;
-    
     gst_structure_get(reply, "offer", GST_TYPE_WEBRTC_SESSION_DESCRIPTION, &offer, NULL);
-    
+
+    if (!offer) {
+        std::cerr << "❌ Error: no se pudo crear la oferta SDP\n";
+        gst_promise_unref(promise);
+        return;
+    }
+
     // Establecer oferta local
     g_signal_emit_by_name(self->webrtcbin_, "set-local-description", offer, NULL);
-    
+
     // Enviar oferta al servidor de señalización
     gchar* sdp_string = gst_sdp_message_as_text(offer->sdp);
     self->sendSDP("offer", sdp_string);
     g_free(sdp_string);
-    
+
     gst_webrtc_session_description_free(offer);
     gst_promise_unref(promise);
-    
+
     std::cout << "📤 Offer sent to signaling server\n";
 }
 
@@ -619,76 +689,92 @@ void GStreamerManager::onIceCandidate(GstElement* /* webrtc */, guint mlineindex
                                       gchar* candidate, gpointer user_data) {
     GStreamerManager* self = static_cast<GStreamerManager*>(user_data);
 
+    if (!self || !candidate) {
+        std::cerr << "❌ Error: puntero nulo en onIceCandidate\n";
+        return;
+    }
+
     std::cout << "🧊 ICE candidate: " << candidate << "\n";
     self->sendICECandidate(mlineindex, candidate);
 }
 
 void GStreamerManager::connectToSignalingServer() {
     std::cout << "Connecting to signaling server: " << signaling_server_ << "\n";
-    
+
     ws_client_ = std::make_shared<WebSocketClient>(signaling_server_);
-    
+
     // ========== Configurar callbacks WebRTC ==========
-    
+
     // Callback para SDP (offer/answer)
     ws_client_->setOnSDPCallback([this](const std::string& type, const std::string& sdp) {
         std::cout << "📥 Callback SDP activado: " << type << "\n";
         handleRemoteSDP(type, sdp);
     });
-    
+
     // Callback para ICE candidates
     ws_client_->setOnICECandidateCallback([this](int mline_index, const std::string& candidate) {
         std::cout << "🧊 Callback ICE activado (mline: " << mline_index << ")\n";
         handleRemoteICE(mline_index, candidate);
     });
-    
+
     // Callback opcional para mensajes generales
-    ws_client_->setOnMessageCallback([](const std::string& msg) {
+    ws_client_->setOnMessageCallback([this](const std::string& msg) {
         std::cout << "📨 Mensaje WebSocket raw: " << msg << "\n";
+
+        // Cuando el WebSocket se conecta, agregar el transceiver para iniciar la negociación
+        if (msg.find("register_cpp") != std::string::npos && webrtcbin_) {
+            std::cout << "🔗 WebSocket conectado, iniciando negociación WebRTC...\n";
+
+            // Crear un transceiver de video para disparar la negociación
+            GstWebRTCRTPTransceiverDirection direction = GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY;
+            g_signal_emit_by_name(webrtcbin_, "add-transceiver", direction, NULL);
+
+            std::cout << "  ✓ Transceiver de video añadido\n";
+        }
     });
-    
+
     // Conectar
     ws_client_->connect();
-    
+
     std::cout << "✅ WebSocket client configurado\n";
 }
 
 void GStreamerManager::sendSDP(const std::string& type, const std::string& sdp) {
-    // if (!ws_client_ || !ws_client_->isConnected()) {
-    //     std::cerr << "❌ WebSocket no conectado\n";
-    //     return;
-    // }
-    
-    // nlohmann::json j;
-    // j["type"] = type;
-    // j["data"] = sdp;
-    
-    // std::string message = j.dump();
-    // ws_client_->sendMessage(message);
-    
-    // std::cout << "📤 Enviado " << type << " SDP al servidor\n";
+    if (!ws_client_ || !ws_client_->isConnected()) {
+        std::cerr << "❌ WebSocket no conectado\n";
+        return;
+    }
+
+    nlohmann::json j;
+    j["type"] = type;
+    j["data"] = sdp;
+
+    std::string message = j.dump();
+    ws_client_->sendMessage(message);
+
+    std::cout << "📤 Enviado " << type << " SDP al servidor\n";
 }
 
 void GStreamerManager::sendICECandidate(guint mline_index, const std::string& candidate) {
-    // if (!ws_client_ || !ws_client_->isConnected()) {
-    //     std::cerr << "❌ WebSocket no conectado\n";
-    //     return;
-    // }
-    
-    // nlohmann::json j;
-    // j["type"] = "candidate";
-    // j["mlineIndex"] = mline_index;
-    // j["data"] = candidate;
-    
-    // std::string message = j.dump();
-    // ws_client_->sendMessage(message);
-    
-    // std::cout << "📤 Enviado ICE candidate (mline: " << mline_index << ")\n";
+    if (!ws_client_ || !ws_client_->isConnected()) {
+        std::cerr << "❌ WebSocket no conectado\n";
+        return;
+    }
+
+    nlohmann::json j;
+    j["type"] = "candidate";
+    j["mlineIndex"] = mline_index;
+    j["data"] = candidate;
+
+    std::string message = j.dump();
+    ws_client_->sendMessage(message);
+
+    std::cout << "📤 Enviado ICE candidate (mline: " << mline_index << ")\n";
 }
 
 void GStreamerManager::handleRemoteSDP(const std::string& type, const std::string& sdp) {
-    // std::cout << "📥 Procesando remote " << type << " SDP...\n";
-    
+    std::cout << "📥 Procesando remote " << type << " SDP...\n";
+
     if (!webrtcbin_) {
         std::cerr << "❌ webrtcbin no inicializado\n";
         return;
