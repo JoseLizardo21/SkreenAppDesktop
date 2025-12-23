@@ -562,7 +562,7 @@ bool GStreamerManager::linkWebRTCBranch() {
 }
 
 void GStreamerManager::setupWebRTCCallbacks() {
-    std::cout << "  Configurando callbacks WebRTC...\n";
+    // std::cout << "  Configurando callbacks WebRTC...\n";
 
     // Callback cuando se necesita negociación
     g_signal_connect(webrtcbin_, "on-negotiation-needed",
