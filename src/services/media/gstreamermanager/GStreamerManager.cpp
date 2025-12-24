@@ -355,9 +355,6 @@ bool GStreamerManager::createWebRTCElements() {
     std::cout << "  Creando elementos WebRTC...\n";
     
     // Elementos base
-    tee_ = gst_element_factory_make("tee", "tee");
-    queue_preview_ = gst_element_factory_make("queue", "queue_preview");
-    appsink_ = gst_element_factory_make("fakesink", "preview");
     queue_webrtc_ = gst_element_factory_make("queue", "queue_webrtc");
     videoconvert_webrtc_ = gst_element_factory_make("videoconvert", "convert_webrtc");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtc");
@@ -420,14 +417,10 @@ bool GStreamerManager::createWebRTCElements() {
     }
     
     // ========== VERIFICAR TODOS LOS ELEMENTOS ==========
-    if (!tee_ || !queue_preview_ || !appsink_ || !queue_webrtc_ ||
+    if (!queue_webrtc_ ||
         !videoconvert_webrtc_ || !x264enc_ || !rtph264pay_ || !webrtcbin_) {
         error("Failed to create one or more WebRTC elements");
-        
         // Debug detallado
-        if (!tee_) std::cerr << "  ❌ tee\n";
-        if (!queue_preview_) std::cerr << "  ❌ queue_preview\n";
-        if (!appsink_) std::cerr << "  ❌ appsink\n";
         if (!queue_webrtc_) std::cerr << "  ❌ queue_webrtc\n";
         if (!videoconvert_webrtc_) std::cerr << "  ❌ videoconvert_webrtc\n";
         if (!x264enc_) std::cerr << "  ❌ encoder\n";
@@ -453,26 +446,17 @@ bool GStreamerManager::linkWebRTCBranch() {
         return false;
     }
 
-    std::cout << "  Enlazando rama WebRTC...\n";
+    std::cout << "  Enlazando WebRTC (sin preview)...\n";
 
-    // ========== Pausar pipeline ==========
-    GstState current_state, pending_state;
-    gst_element_get_state(pipeline_, &current_state, &pending_state, 0);
+    GstState current_state;
+    gst_element_get_state(pipeline_, &current_state, nullptr, 0);
 
     if (current_state == GST_STATE_PLAYING) {
-        std::cout << "  Pausando pipeline...\n";
         gst_element_set_state(pipeline_, GST_STATE_PAUSED);
-        gst_element_get_state(pipeline_, NULL, NULL, GST_CLOCK_TIME_NONE);
+        gst_element_get_state(pipeline_, nullptr, nullptr, GST_CLOCK_TIME_NONE);
     }
 
-    // ========== Configurar fakesink ==========
-    g_object_set(G_OBJECT(appsink_), "sync", FALSE, NULL);
-
-    // ========== Añadir TODOS los elementos nuevos al pipeline ==========
     gst_bin_add_many(GST_BIN(pipeline_),
-                     tee_,
-                     queue_preview_,
-                     appsink_,
                      queue_webrtc_,
                      videoconvert_webrtc_,
                      x264enc_,
@@ -480,129 +464,54 @@ bool GStreamerManager::linkWebRTCBranch() {
                      webrtcbin_,
                      NULL);
 
-    // ========== Desenlazar videoconvert2 (si estaba enlazado) ==========
-    GstPad* convert2_src = gst_element_get_static_pad(videoconvert2_, "src");
-    if (convert2_src) {
-        GstPad* peer = gst_pad_get_peer(convert2_src);
-        if (peer) {
-            gst_pad_unlink(convert2_src, peer);
-            gst_object_unref(peer);
-        }
-        gst_object_unref(convert2_src);
-    }
-
-    // ========== Enlazar: videoconvert2 → tee ==========
-    if (!gst_element_link(videoconvert2_, tee_)) {
-        error("Failed to link videoconvert2 to tee");
+    // videoconvert2 → queue_webrtc
+    if (!gst_element_link(videoconvert2_, queue_webrtc_)) {
+        error("Failed to link videoconvert2 to queue_webrtc");
         return false;
     }
 
-    // ========== Rama 1: Preview usando request pad ==========
-    GstPad* tee_preview_pad = gst_element_request_pad_simple(tee_, "src_%u");
-    if (!tee_preview_pad) {
-        error("Failed to get tee preview src pad");
-        return false;
-    }
-
-    GstPad* queue_preview_sink = gst_element_get_static_pad(queue_preview_, "sink");
-    if (!queue_preview_sink) {
-        error("Failed to get queue_preview sink pad");
-        gst_object_unref(tee_preview_pad);
-        return false;
-    }
-
-    if (gst_pad_link(tee_preview_pad, queue_preview_sink) != GST_PAD_LINK_OK) {
-        error("Failed to link tee to queue_preview");
-        gst_object_unref(tee_preview_pad);
-        gst_object_unref(queue_preview_sink);
-        return false;
-    }
-    gst_object_unref(tee_preview_pad);
-    gst_object_unref(queue_preview_sink);
-
-    // Enlazar resto de rama preview
-    if (!gst_element_link(queue_preview_, appsink_)) {
-        error("Failed to link queue_preview to appsink");
-        return false;
-    }
-
-    // ========== Rama 2: WebRTC usando request pad ==========
-    GstPad* tee_webrtc_pad = gst_element_request_pad_simple(tee_, "src_%u");
-    if (!tee_webrtc_pad) {
-        error("Failed to get tee webrtc src pad");
-        return false;
-    }
-
-    GstPad* queue_webrtc_sink = gst_element_get_static_pad(queue_webrtc_, "sink");
-    if (!queue_webrtc_sink) {
-        error("Failed to get queue_webrtc sink pad");
-        gst_object_unref(tee_webrtc_pad);
-        return false;
-    }
-
-    if (gst_pad_link(tee_webrtc_pad, queue_webrtc_sink) != GST_PAD_LINK_OK) {
-        error("Failed to link tee to queue_webrtc");
-        gst_object_unref(tee_webrtc_pad);
-        gst_object_unref(queue_webrtc_sink);
-        return false;
-    }
-    gst_object_unref(tee_webrtc_pad);
-    gst_object_unref(queue_webrtc_sink);
-
-    // Enlazar resto de rama WebRTC
+    // queue → convert → encoder → payloader
     if (!gst_element_link_many(queue_webrtc_,
                                videoconvert_webrtc_,
                                x264enc_,
                                rtph264pay_,
                                NULL)) {
-        error("Failed to link WebRTC encoding chain");
+        error("Failed to link WebRTC chain");
         return false;
     }
 
-    // ========== Conectar rtph264pay → webrtcbin ==========
-    GstPad* payloader_src = gst_element_get_static_pad(rtph264pay_, "src");
-    if (!payloader_src) {
-        error("Failed to get payloader src pad");
-        return false;
-    }
-
+    // payloader → webrtcbin
+    GstPad* pay_src = gst_element_get_static_pad(rtph264pay_, "src");
     GstPad* webrtc_sink = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
-    if (!webrtc_sink) {
-        error("Failed to request webrtcbin sink pad");
-        gst_object_unref(payloader_src);
+
+    if (!pay_src || !webrtc_sink) {
+        error("Failed to get pads for webrtc");
         return false;
     }
 
-    GstPadLinkReturn link_ret = gst_pad_link(payloader_src, webrtc_sink);
-    if (link_ret != GST_PAD_LINK_OK) {
-        error("Failed to link payloader to webrtcbin: " + std::to_string(link_ret));
-        gst_object_unref(payloader_src);
-        gst_object_unref(webrtc_sink);
+    if (gst_pad_link(pay_src, webrtc_sink) != GST_PAD_LINK_OK) {
+        error("Failed to link payloader to webrtcbin");
         return false;
     }
 
-    gst_object_unref(payloader_src);
+    gst_object_unref(pay_src);
     gst_object_unref(webrtc_sink);
 
-    // ========== Sincronizar estado de TODOS los elementos nuevos ==========
-    gst_element_sync_state_with_parent(tee_);
-    gst_element_sync_state_with_parent(queue_preview_);
-    gst_element_sync_state_with_parent(appsink_);
+    // Sync states
     gst_element_sync_state_with_parent(queue_webrtc_);
     gst_element_sync_state_with_parent(videoconvert_webrtc_);
     gst_element_sync_state_with_parent(x264enc_);
     gst_element_sync_state_with_parent(rtph264pay_);
     gst_element_sync_state_with_parent(webrtcbin_);
 
-    // ========== Reanudar pipeline ==========
     if (current_state == GST_STATE_PLAYING) {
-        std::cout << "  Reanudando pipeline...\n";
         gst_element_set_state(pipeline_, GST_STATE_PLAYING);
     }
 
-    std::cout << "  ✓ Rama WebRTC enlazada exitosamente\n";
+    std::cout << "  ✓ WebRTC enlazado sin preview\n";
     return true;
 }
+
 
 void GStreamerManager::setupWebRTCCallbacks() {
     std::cout << "  Configurando callbacks WebRTC...\n";

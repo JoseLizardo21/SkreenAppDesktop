@@ -59,14 +59,11 @@ private:
     GstElement* videoconvert2_{nullptr};
 
     // ========== NUEVO: WebRTC elements ==========
-    GstElement* tee_{nullptr};              // Divide stream en 2 ramas
     GstElement* queue_webrtc_{nullptr};     // Cola para WebRTC
     GstElement* webrtcbin_{nullptr};        // WebRTC endpoint
     GstElement* x264enc_{nullptr};          // Encoder H.264
     GstElement* rtph264pay_{nullptr};       // RTP payloader
     GstElement* videoconvert_webrtc_{nullptr}; // Convert para WebRTC
-    GstElement* appsink_{nullptr};
-    GstElement* queue_preview_{nullptr};
     
     bool webrtc_enabled_{false};
     std::string signaling_server_;
