@@ -376,15 +376,25 @@ bool GStreamerManager::createWebRTCElements() {
         
         // Configurar x264
         g_object_set(G_OBJECT(x264enc_),
-                     "tune", 0x00000004,      // zerolatency
-                     "speed-preset", 1,       // ultrafast
-                     "bitrate", 2000,         // 2 Mbps
-                     "key-int-max", 30,
+                     "tune", 0x00000004,           // zerolatency
+                     "speed-preset", 1,            // ultrafast
+                     "bitrate", 4000,              // ⬆️ Aumentar a 4 Mbps
+                     "key-int-max", 60,            // ⬆️ Keyframes cada 2 seg (30fps)
+                     "threads", 4,                 // ➕ Multithreading
+                     "sliced-threads", TRUE,       // ➕ Threads por slice
+                     "vbv-buf-capacity", 120,      // ➕ Buffer VBV
+                     "byte-stream", TRUE,          // ➕ Para WebRTC
+                     "aud", FALSE,                 // ➕ Deshabilitar AUD
+                     "cabac", FALSE,               // ➕ Más rápido sin CABAC
+                     "dct8x8", FALSE,              // ➕ Más rápido
+                     "bframes", 0,                 // ➕ Sin B-frames
                      NULL);
         
         g_object_set(G_OBJECT(rtph264pay_),
-                     "config-interval", 1,
+                     "config-interval", -1,        // ⬆️ SPS/PPS en cada keyframe
                      "pt", 96,
+                     "mtu", 1200,                  // ➕ MTU optimizado
+                     "aggregate-mode", 1,          // ➕ zero-latency
                      NULL);
     } else {
         // ========== FALLBACK A VP8 ==========
