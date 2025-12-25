@@ -356,6 +356,13 @@ bool GStreamerManager::createWebRTCElements() {
     
     // Elementos base
     queue_webrtc_ = gst_element_factory_make("queue", "queue_webrtc");
+    // 🔥 CONFIGURAR QUEUE PARA BAJA LATENCIA
+    g_object_set(G_OBJECT(queue_webrtc_),
+                 "max-size-buffers", 1,       // ➕ Solo 1 buffer
+                 "max-size-bytes", 0,         // ➕ Sin límite de bytes
+                 "max-size-time", 0,          // ➕ Sin límite de tiempo
+                 "leaky", 2,                  // ➕ downstream (descartar viejos)
+                 NULL);
     videoconvert_webrtc_ = gst_element_factory_make("videoconvert", "convert_webrtc");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtc");
     

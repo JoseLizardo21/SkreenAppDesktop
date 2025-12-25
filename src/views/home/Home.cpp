@@ -28,7 +28,7 @@ Home::Home() {
     gtk_container_add(GTK_CONTAINER(window), box);
 
     // Botón
-    GtkWidget* button = gtk_button_new_with_label("Saludar");
+    GtkWidget* button = gtk_button_new_with_label("Transmitir pantalla");
     gtk_widget_set_size_request(button, 200, 50);
     g_signal_connect(button, "clicked", G_CALLBACK(on_button_clicked), this);
 
