@@ -23,11 +23,11 @@ Home::Home() {
 
     g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
-    // Contenedor
+    // Container
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(window), box);
 
-    // Botón
+    // Button
     GtkWidget* button = gtk_button_new_with_label("Transmitir pantalla");
     gtk_widget_set_size_request(button, 200, 50);
     g_signal_connect(button, "clicked", G_CALLBACK(on_button_clicked), this);
