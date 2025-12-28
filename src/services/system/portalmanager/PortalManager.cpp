@@ -404,26 +404,6 @@ void PortalManager::processSignal(DBusMessage* msg) {
                         DBusMessageIter option_variant;
                         dbus_message_iter_recurse(&option_entry, &option_variant);
 
-                        if (strcmp(option_key, "size") == 0) {
-                            DBusMessageIter size_struct;
-                            dbus_message_iter_recurse(&option_variant, &size_struct);
-                            int32_t width, height;
-                            dbus_message_iter_get_basic(&size_struct, &width);
-                            dbus_message_iter_next(&size_struct);
-                            dbus_message_iter_get_basic(&size_struct, &height);
-                            std::cout << "    Resolution: " << width << "x" << height << "\n";
-                        }
-
-                        if (strcmp(option_key, "position") == 0) {
-                            DBusMessageIter pos_struct;
-                            dbus_message_iter_recurse(&option_variant, &pos_struct);
-                            int32_t x, y;
-                            dbus_message_iter_get_basic(&pos_struct, &x);
-                            dbus_message_iter_next(&pos_struct);
-                            dbus_message_iter_get_basic(&pos_struct, &y);
-                            std::cout << "    Position: (" << x << ", " << y << ")\n";
-                        }
-
                         dbus_message_iter_next(&stream_options);
                     }
                 }
