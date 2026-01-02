@@ -23,11 +23,10 @@ public:
 
     void setErrorCallback(ErrorCallback callback) { error_callback_ = callback; }
 
-    bool initializePipeline(int fd, uint32_t node_id, int width = 1280, int height = 720);
+    bool initializePipeline(int fd, uint32_t node_id);
     bool startCapture();
     void stopCapture();
     bool isCapturing() const { return is_capturing_; }
-    bool reconfigureResolution(int width, int height);
 
     // ========== NUEVO: WebRTC ==========
     /**
@@ -73,8 +72,6 @@ private:
     bool is_capturing_{false};
     int fd_{-1};
     uint32_t node_id_{0};
-    int frame_width_{1280};
-    int frame_height_{720};
 
     FrameCallback frame_callback_;
     ErrorCallback error_callback_;
@@ -83,7 +80,6 @@ private:
     bool createElements();
     bool configurePipeWireSource();
     bool configureFrameRateFilter();
-    bool configureScalingFilter();
     bool linkElements();
     bool setupBusHandler();
 

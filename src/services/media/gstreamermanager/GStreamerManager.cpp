@@ -19,7 +19,7 @@ void GStreamerManager::initializeGStreamer() {
     gst_init(nullptr, nullptr);
 }
 
-bool GStreamerManager::initializePipeline(int fd, uint32_t node_id, int width, int height) {
+bool GStreamerManager::initializePipeline(int fd, uint32_t node_id) {
     if (fd < 0 || node_id == 0) {
         error("Invalid file descriptor or node ID");
         return false;
@@ -27,8 +27,6 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id, int width, i
 
     fd_ = fd;
     node_id_ = node_id;
-    frame_width_ = width;
-    frame_height_ = height;
 
     std::cout << "🎬 Initializing GStreamer pipeline...\n";
 
@@ -38,7 +36,6 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id, int width, i
 
     if (!configurePipeWireSource() ||
         !configureFrameRateFilter() ||
-        !configureScalingFilter() ||
         !linkElements() ||
         !setupBusHandler()) {
         cleanup();
@@ -95,21 +92,6 @@ bool GStreamerManager::configureFrameRateFilter() {
     std::cout << "  ✓ Frame rate limited to 30 fps\n";
     return true;
 }
-
-bool GStreamerManager::configureScalingFilter() {
-    std::cout << "  Configuring scaling filter...\n";
-
-    GstCaps* caps = gst_caps_new_simple("video/x-raw",
-                                        "width", G_TYPE_INT, frame_width_,
-                                        "height", G_TYPE_INT, frame_height_,
-                                        NULL);
-    g_object_set(G_OBJECT(capsfilter_scale_), "caps", caps, NULL);
-    gst_caps_unref(caps);
-
-    std::cout << "  ✓ Scaled to " << frame_width_ << "x" << frame_height_ << "\n";
-    return true;
-}
-
 
 bool GStreamerManager::linkElements() {
     std::cout << "  Linking pipeline elements...\n";
@@ -254,52 +236,6 @@ void GStreamerManager::error(const std::string& message) {
     if (error_callback_) {
         error_callback_(message);
     }
-}
-
-bool GStreamerManager::reconfigureResolution(int width, int height) {
-    if (!pipeline_ || !capsfilter_scale_) {
-        std::cerr << "Cannot reconfigure: pipeline or capsfilter not initialized\n";
-        return false;
-    }
-
-    if (width <= 0 || height <= 0) {
-        std::cerr << "Invalid resolution: " << width << "x" << height << "\n";
-        return false;
-    }
-
-    // Pause the pipeline
-    GstStateChangeReturn ret = gst_element_set_state(pipeline_, GST_STATE_PAUSED);
-    if (ret == GST_STATE_CHANGE_FAILURE) {
-        std::cerr << "Failed to pause pipeline\n";
-        return false;
-    }
-
-    // Wait for state change to complete
-    gst_element_get_state(pipeline_, nullptr, nullptr, 1 * GST_SECOND);
-
-    // Update stored dimensions
-    frame_width_ = width;
-    frame_height_ = height;
-
-    // Reconfigure the scaling filter caps
-    GstCaps* caps = gst_caps_new_simple("video/x-raw",
-                                        "width", G_TYPE_INT, frame_width_,
-                                        "height", G_TYPE_INT, frame_height_,
-                                        NULL);
-    g_object_set(G_OBJECT(capsfilter_scale_), "caps", caps, NULL);
-    gst_caps_unref(caps);
-
-    std::cout << "  ✓ Reconfigured to " << frame_width_ << "x" << frame_height_ << "\n";
-
-    // Resume the pipeline
-    ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
-    if (ret == GST_STATE_CHANGE_FAILURE) {
-        std::cerr << "Failed to resume pipeline\n";
-        return false;
-    }
-
-    std::cout << "🎬 Pipeline reconfigured with resolution: " << width << "x" << height << "\n";
-    return true;
 }
 
 bool GStreamerManager::enableWebRTC(const std::string& signaling_server) {
