@@ -1,11 +1,12 @@
 #include "HomeController.h"
 #include "../../views/home/Home.h"
 #include "../../services/system/portalmanager/PortalManager.h"
+#include "../../services/websocketclient/WebSocketClient.h"
 #include <memory>
 #include <iostream>
 
-HomeController::HomeController(Home* view)
-    : view_(view) {
+HomeController::HomeController(Home* home, WebSocketClient* ws)
+    : view_(home), ws_(ws) {
     portal_manager_ = std::make_unique<PortalManager>();
     gstreamer_manager_ = std::make_unique<GStreamerManager>();
     
@@ -15,6 +16,8 @@ HomeController::HomeController(Home* view)
         });
     view_->setOnRequestPermissionsCallback(
         [this]() { handleRequestPermissions(); });
+    ws_->setTransmitButtonEnabled(
+        [this](bool isEnabled){enabledButtonTransmiter(isEnabled);});
 }
 
 HomeController::~HomeController() {
@@ -62,6 +65,12 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         } else {
             onGStreamerError("Failed to initialize GStreamer pipeline");
         }
+    }
+}
+
+void HomeController::enabledButtonTransmiter(const bool isEnabled) {
+    if(view_) {
+        view_->setTransmitButtonEnabled(isEnabled);
     }
 }
 

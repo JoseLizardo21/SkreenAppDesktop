@@ -16,8 +16,10 @@ class Home {
             on_request_permissions_callback_ = callback;
         }
         void requestPermissions();
+        void setTransmitButtonEnabled(bool enabled);
     private:
         GtkWidget* window;
+        GtkWidget* transmit_button;
         std::function<void()> on_request_permissions_callback_;
 
 };

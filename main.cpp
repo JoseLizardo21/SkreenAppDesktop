@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
 
 
     g_home = new Home();
-    g_home_controller = new HomeController(g_home);
+    g_home_controller = new HomeController(g_home, g_websocket_client);
     g_home->show();
     
     gtk_main();

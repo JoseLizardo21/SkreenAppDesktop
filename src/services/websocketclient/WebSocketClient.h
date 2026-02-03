@@ -37,6 +37,10 @@ public:
         on_ice_callback_ = callback;
     }
 
+    void setTransmitButtonEnabled(std::function<void(bool)> callback) {
+        on_transmit_button_callback_ = callback;
+    }
+
     bool isConnected() const {
         return connected_.load();
     }
@@ -63,6 +67,7 @@ private:
     // ========== NUEVO: Callbacks WebRTC ==========
     std::function<void(const std::string&, const std::string&)> on_sdp_callback_;  // (type, sdp)
     std::function<void(int, const std::string&)> on_ice_callback_;  // (mline_index, candidate)
+    std::function<void(bool)> on_transmit_button_callback_;
 
     void connectThreadWorker();
     void messageThreadWorker();
