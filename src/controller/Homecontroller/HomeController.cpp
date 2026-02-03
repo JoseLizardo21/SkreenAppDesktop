@@ -8,8 +8,8 @@
 HomeController::HomeController(Home* home, WebSocketClient* ws)
     : view_(home), ws_(ws) {
     portal_manager_ = std::make_unique<PortalManager>();
-    gstreamer_manager_ = std::make_unique<GStreamerManager>();
-    
+    gstreamer_manager_ = std::make_unique<GStreamerManager>(ws_);
+
     portal_manager_->setPortalCallback(
         [this](const std::string& session_handle, uint32_t node_id, int fd) {
             onPortalComplete(session_handle, node_id, fd);

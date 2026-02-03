@@ -8,7 +8,9 @@
 
 using json = nlohmann::json;
 
-GStreamerManager::GStreamerManager() = default;
+GStreamerManager::GStreamerManager(WebSocketClient* ws_client)
+    : ws_client_(ws_client) {
+}
 
 GStreamerManager::~GStreamerManager() {
     stopCapture();
@@ -282,8 +284,8 @@ void GStreamerManager::disableWebRTC() {
     }
     
     webrtc_enabled_ = false;
-    ws_client_.reset();
-    
+    // No reseteamos ws_client_ porque es un puntero externo, no lo poseemos
+
     std::cout << "✅ WebRTC deshabilitado\n";
 }
 
@@ -561,9 +563,12 @@ void GStreamerManager::onIceCandidate(GstElement* /* webrtc */, guint mlineindex
 }
 
 void GStreamerManager::connectToSignalingServer() {
-    std::cout << "Connecting to signaling server: " << signaling_server_ << "\n";
+    if (!ws_client_) {
+        std::cerr << "❌ WebSocket client no proporcionado\n";
+        return;
+    }
 
-    ws_client_ = std::make_shared<WebSocketClient>(signaling_server_);
+    std::cout << "Configurando callbacks para WebRTC en WebSocket existente\n";
 
     // ========== Configurar callbacks WebRTC ==========
 
@@ -579,26 +584,8 @@ void GStreamerManager::connectToSignalingServer() {
         handleRemoteICE(mline_index, candidate);
     });
 
-    // Callback opcional para mensajes generales
-    ws_client_->setOnMessageCallback([this](const std::string& msg) {
-        std::cout << "📨 Mensaje WebSocket raw: " << msg << "\n";
-
-        // Cuando el WebSocket se conecta, agregar el transceiver para iniciar la negociación
-        if (msg.find("register_cpp") != std::string::npos && webrtcbin_) {
-            std::cout << "🔗 WebSocket conectado, iniciando negociación WebRTC...\n";
-
-            // Crear un transceiver de video para disparar la negociación
-            GstWebRTCRTPTransceiverDirection direction = GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY;
-            g_signal_emit_by_name(webrtcbin_, "add-transceiver", direction, NULL);
-
-            std::cout << "  ✓ Transceiver de video añadido\n";
-        }
-    });
-
-    // Conectar
-    ws_client_->connect();
-
-    std::cout << "✅ WebSocket client configurado\n";
+    std::cout << "✅ Callbacks WebRTC configurados en WebSocket existente\n";
+    std::cout << "⏳ Esperando señal 'on-negotiation-needed' del pipeline...\n";
 }
 
 void GStreamerManager::sendSDP(const std::string& type, const std::string& sdp) {

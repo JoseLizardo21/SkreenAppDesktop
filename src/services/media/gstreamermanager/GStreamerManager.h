@@ -16,7 +16,7 @@ public:
     using FrameCallback = std::function<void(const uint8_t*, int, int)>;
     using ErrorCallback = std::function<void(const std::string&)>;
 
-    GStreamerManager();
+    GStreamerManager(WebSocketClient* ws_client);
     ~GStreamerManager();
 
     static void initializeGStreamer();
@@ -66,7 +66,7 @@ private:
     
     bool webrtc_enabled_{false};
     std::string signaling_server_;
-    std::shared_ptr<WebSocketClient> ws_client_;
+    WebSocketClient* ws_client_{nullptr};
 
     // State existente
     bool is_capturing_{false};

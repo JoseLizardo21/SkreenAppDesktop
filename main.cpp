@@ -13,6 +13,7 @@ WebSocketClient* g_websocket_client = nullptr;
 int main(int argc, char* argv[]) {
     GStreamerManager::initializeGStreamer();
     g_websocket_client = new WebSocketClient("ws://localhost:9001");
+    g_websocket_client->connect();
 
     gtk_init(&argc, &argv);
 

@@ -214,8 +214,11 @@ void WebSocketClient::handleMessage(const std::string& message) {
             return;
         }
 
-        // ========== Mensajes existentes (client_info) ==========
-        if (type == "client_info" || j.contains("device_name")) {
+        // ========== Mensajes existentes (client_info y screen_info) ==========
+        if (type == "client_info" || type == "screen_info" || j.contains("device_name")) {
+            if (on_transmit_button_callback_) {
+                on_transmit_button_callback_(true);
+            }
             std::string device_name = j["device_name"];
             int width = j["width"];
             int height = j["height"];
