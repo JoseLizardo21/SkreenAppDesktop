@@ -16,6 +16,8 @@ HomeController::HomeController(Home* home, WebSocketClient* ws)
         });
     view_->setOnRequestPermissionsCallback(
         [this]() { handleRequestPermissions(); });
+    view_->setOnCancelTransmissionCallback(
+        [this]() { handleStopCapture(); });
     ws_->setTransmitButtonEnabled(
         [this](bool isEnabled){enabledButtonTransmiter(isEnabled);});
 }
@@ -56,6 +58,9 @@ void HomeController::onPortalComplete(const std::string& session_handle,
                 // Enable WebRTC streaming
                 if (gstreamer_manager_->enableWebRTC("ws://localhost:9001")) {
                     std::cout << "🌐 WebRTC enabled and connected to signaling server\n";
+                    if (view_) {
+                        view_->setTransmitting(true);
+                    }
                 } else {
                     std::cerr << "⚠️ Failed to enable WebRTC, continuing with local preview only\n";
                 }
@@ -91,6 +96,11 @@ void HomeController::onGStreamerError(const std::string& error) {
 
 void HomeController::handleStopCapture() {
     std::cout << "Stopping capture\n";
+
+    // Update UI
+    if (view_) {
+        view_->setTransmitting(false);
+    }
 
     // Disable WebRTC first
     if (gstreamer_manager_) {
