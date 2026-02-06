@@ -27,6 +27,14 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id) {
         return false;
     }
 
+    // Cleanup previous pipeline if exists
+    if (pipeline_) {
+        std::cout << "Cleaning up previous pipeline...\n";
+        disableWebRTC();
+        stopCapture();
+        cleanup();
+    }
+
     fd_ = fd;
     node_id_ = node_id;
 

@@ -72,6 +72,11 @@ void HomeController::enabledButtonTransmiter(const bool isEnabled) {
     if(view_) {
         view_->setTransmitButtonEnabled(isEnabled);
     }
+
+    // When device disconnects, stop capture sessions
+    if (!isEnabled) {
+        handleStopCapture();
+    }
 }
 
 void HomeController::onGStreamerError(const std::string& error) {
@@ -87,15 +92,11 @@ void HomeController::onGStreamerError(const std::string& error) {
 void HomeController::handleStopCapture() {
     std::cout << "Stopping capture\n";
 
-    // Stop GStreamer pipeline
+    // Disable WebRTC first
     if (gstreamer_manager_) {
+        gstreamer_manager_->disableWebRTC();
         gstreamer_manager_->stopCapture();
     }
-
-    // Stop capture session
-    // if (capture_session_) {
-    //     capture_session_->stopCapture();
-    // }
 
     // Stop portal workflow
     if (portal_manager_) {

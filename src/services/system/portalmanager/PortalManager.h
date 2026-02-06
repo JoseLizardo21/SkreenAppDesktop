@@ -4,6 +4,7 @@
 #include <string>
 #include <functional>
 #include <atomic>
+#include <thread>
 #include <dbus/dbus.h>
 #include <cstdint>
 
@@ -76,12 +77,18 @@ public:
 private:
     // Portal state
     std::string session_handle_;
+    std::string session_token_;
+    std::string request_token_;
     uint32_t pipewire_node_id_{0};
     int pipewire_fd_{-1};
     std::atomic<bool> is_running_{false};
+    uint32_t request_counter_{0};
 
     // DBus connection
     DBusConnection* connection_{nullptr};
+
+    // Worker thread
+    std::thread worker_thread_;
 
     // Callbacks
     PortalCallback portal_callback_;

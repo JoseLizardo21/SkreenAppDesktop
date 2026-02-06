@@ -93,6 +93,13 @@ wss.on('connection', (ws) => {
         if (ws === flutterClient) {
             console.log("❌ Cliente Flutter desconectado");
             flutterClient = null;
+
+            // Notificar a C++ que Flutter se desconectó
+            if (cppClient) {
+                console.log("📤 Notificando a C++ que Flutter se desconectó");
+                const disconnectMsg = JSON.stringify({ type: 'flutter_disconnected' });
+                cppClient.send(disconnectMsg);
+            }
         }
     });
 });

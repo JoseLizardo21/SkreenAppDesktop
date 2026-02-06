@@ -188,6 +188,15 @@ void WebSocketClient::handleMessage(const std::string& message) {
 
         std::cout << "[WebSocket] Mensaje recibido tipo: " << type << "\n";
 
+        // ========== Manejar desconexión de Flutter ==========
+        if (type == "flutter_disconnected") {
+            std::cout << "[WebSocket] Flutter client disconnected\n";
+            if (on_transmit_button_callback_) {
+                on_transmit_button_callback_(false);
+            }
+            return;
+        }
+
         // ========== Manejar mensajes WebRTC ==========
         if (type == "offer" || type == "answer") {
             // Mensaje SDP de WebRTC

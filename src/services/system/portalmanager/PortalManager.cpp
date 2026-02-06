@@ -1,25 +1,44 @@
 #include "PortalManager.h"
 #include <iostream>
 #include <thread>
+#include <chrono>
 #include <cstring>
 
 PortalManager::PortalManager() = default;
 
 PortalManager::~PortalManager() {
     stop();
+    if (worker_thread_.joinable()) {
+        worker_thread_.join();
+    }
     cleanup();
 }
 
 void PortalManager::startAsync() {
+    // Stop previous session if running
     if (is_running_) {
-        std::cerr << "⚠️ Portal manager already running\n";
-        return;
+        stop();
     }
+
+    // Wait for previous thread to finish
+    if (worker_thread_.joinable()) {
+        worker_thread_.join();
+    }
+
+    // Cleanup previous connection
+    cleanup();
+
+    // Reset state
+    session_handle_.clear();
+    session_token_.clear();
+    request_token_.clear();
+    pipewire_node_id_ = 0;
+    pipewire_fd_ = -1;
 
     is_running_ = true;
 
     // Start portal workflow in a separate thread
-    std::thread([this]() {
+    worker_thread_ = std::thread([this]() {
         DBusError err;
         dbus_error_init(&err);
 
@@ -68,7 +87,7 @@ void PortalManager::startAsync() {
 
         dbus_connection_unref(connection_);
         connection_ = nullptr;
-    }).detach();
+    });
 }
 
 void PortalManager::stop() {
@@ -96,14 +115,29 @@ void PortalManager::createSession() {
     DBusMessageIter dict;
     dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
 
-    // Add session_handle_token
+    // Generate unique tokens
+    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    session_token_ = "session" + std::to_string(now);
+    request_token_ = "request" + std::to_string(++request_counter_) + "_" + std::to_string(now);
+
+    // Add handle_token (for filtering responses)
     DBusMessageIter entry;
+    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+    const char* handle_key = "handle_token";
+    dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &handle_key);
+    DBusMessageIter variant;
+    dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "s", &variant);
+    const char* req_token = request_token_.c_str();
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_STRING, &req_token);
+    dbus_message_iter_close_container(&entry, &variant);
+    dbus_message_iter_close_container(&dict, &entry);
+
+    // Add session_handle_token
     dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
     const char* key = "session_handle_token";
     dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key);
-    DBusMessageIter variant;
     dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "s", &variant);
-    const char* token = "session_12345";
+    const char* token = session_token_.c_str();
     dbus_message_iter_append_basic(&variant, DBUS_TYPE_STRING, &token);
     dbus_message_iter_close_container(&entry, &variant);
     dbus_message_iter_close_container(&dict, &entry);
@@ -120,6 +154,10 @@ void PortalManager::selectSources() {
         return;
     }
 
+    // Update request token
+    request_token_ = "request" + std::to_string(++request_counter_) + "_" +
+                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
@@ -133,16 +171,26 @@ void PortalManager::selectSources() {
     const char* session_path = session_handle_.c_str();
     dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &session_path);
 
-    // Options: types = 1 (monitor) and cursor_mode = 2 (embedded)
+    // Options
     DBusMessageIter dict;
     dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
 
-    // Add types option
+    // Add handle_token
     DBusMessageIter entry;
+    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+    const char* handle_key = "handle_token";
+    dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &handle_key);
+    DBusMessageIter variant;
+    dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "s", &variant);
+    const char* req_token = request_token_.c_str();
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_STRING, &req_token);
+    dbus_message_iter_close_container(&entry, &variant);
+    dbus_message_iter_close_container(&dict, &entry);
+
+    // Add types option
     dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
     const char* key = "types";
     dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key);
-    DBusMessageIter variant;
     dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "u", &variant);
     uint32_t types = 1;  // Monitor
     dbus_message_iter_append_basic(&variant, DBUS_TYPE_UINT32, &types);
@@ -171,6 +219,10 @@ void PortalManager::startCapture() {
         return;
     }
 
+    // Update request token
+    request_token_ = "request" + std::to_string(++request_counter_) + "_" +
+                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+
     std::cout << "Calling Start (portal dialog will appear)...\n";
 
     DBusMessage* msg = dbus_message_new_method_call(
@@ -189,15 +241,26 @@ void PortalManager::startCapture() {
     const char* parent_window = "";
     dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &parent_window);
 
-    // Options with cursor_mode = 2 (embedded)
+    // Options
     DBusMessageIter dict;
     dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
 
+    // Add handle_token
     DBusMessageIter entry;
+    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+    const char* handle_key = "handle_token";
+    dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &handle_key);
+    DBusMessageIter variant;
+    dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "s", &variant);
+    const char* req_token = request_token_.c_str();
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_STRING, &req_token);
+    dbus_message_iter_close_container(&entry, &variant);
+    dbus_message_iter_close_container(&dict, &entry);
+
+    // Add cursor_mode
     dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
     const char* cursor_key = "cursor_mode";
     dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &cursor_key);
-    DBusMessageIter variant;
     dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "u", &variant);
     uint32_t cursor_mode = 2;  // Embedded cursor
     dbus_message_iter_append_basic(&variant, DBUS_TYPE_UINT32, &cursor_mode);
@@ -321,6 +384,13 @@ DBusHandlerResult PortalManager::onPortalSignal(DBusConnection* conn, DBusMessag
 
 void PortalManager::processSignal(DBusMessage* msg) {
     const char* path = dbus_message_get_path(msg);
+
+    // Ignore signals from previous requests
+    std::string path_str(path ? path : "");
+    if (!request_token_.empty() && path_str.find(request_token_) == std::string::npos) {
+        // This signal is not for our current request, ignore it
+        return;
+    }
 
     DBusMessageIter args;
     dbus_message_iter_init(msg, &args);
