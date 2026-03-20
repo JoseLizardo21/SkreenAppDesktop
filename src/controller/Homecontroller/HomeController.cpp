@@ -4,6 +4,31 @@
 #include "../../services/websocketclient/WebSocketClient.h"
 #include <memory>
 #include <iostream>
+#include <cstdlib>
+
+static bool firewalld_port_opened = false;
+
+static bool isFirewalldActive() {
+    return std::system("systemctl is-active --quiet firewalld 2>/dev/null") == 0;
+}
+
+static void openFirewallPort() {
+    if (!isFirewalldActive()) return;
+    if (std::system("firewall-cmd --query-port=9001/tcp --zone=public -q 2>/dev/null") == 0) return;
+    if (std::system("pkexec firewall-cmd --add-port=9001/tcp --zone=public 2>/dev/null") == 0) {
+        firewalld_port_opened = true;
+        std::cout << "🔓 Puerto 9001 abierto en firewalld\n";
+    } else {
+        std::cerr << "⚠️ No se pudo abrir el puerto 9001 en firewalld\n";
+    }
+}
+
+static void closeFirewallPort() {
+    if (!firewalld_port_opened) return;
+    std::system("pkexec firewall-cmd --remove-port=9001/tcp --zone=public 2>/dev/null");
+    firewalld_port_opened = false;
+    std::cout << "🔒 Puerto 9001 cerrado en firewalld\n";
+}
 
 HomeController::HomeController(Home* home, WebSocketClient* ws)
     : view_(home), ws_(ws) {
@@ -27,6 +52,7 @@ HomeController::~HomeController() {
 }
 
 void HomeController::handleRequestPermissions() {
+    openFirewallPort();
 
     if (portal_manager_) {
         portal_manager_->startAsync();
@@ -96,6 +122,7 @@ void HomeController::onGStreamerError(const std::string& error) {
 
 void HomeController::handleStopCapture() {
     std::cout << "Stopping capture\n";
+    closeFirewallPort();
 
     // Update UI
     if (view_) {
