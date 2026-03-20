@@ -304,7 +304,7 @@ bool GStreamerManager::createWebRTCElements() {
     queue_webrtc_ = gst_element_factory_make("queue", "queue_webrtc");
     // 🔥 CONFIGURAR QUEUE PARA BAJA LATENCIA
     g_object_set(G_OBJECT(queue_webrtc_),
-                 "max-size-buffers", 1,       // ➕ Solo 1 buffer
+                 "max-size-buffers", 3,       // ➕ 3 buffers para evitar drops
                  "max-size-bytes", 0,         // ➕ Sin límite de bytes
                  "max-size-time", 0,          // ➕ Sin límite de tiempo
                  "leaky", 2,                  // ➕ downstream (descartar viejos)
@@ -331,11 +331,11 @@ bool GStreamerManager::createWebRTCElements() {
         g_object_set(G_OBJECT(x264enc_),
                      "tune", 0x00000004,           // zerolatency
                      "speed-preset", 1,            // ultrafast
-                     "bitrate", 4000,              // ⬆️ Aumentar a 4 Mbps
-                     "key-int-max", 60,            // ⬆️ Keyframes cada 2 seg (30fps)
-                     "threads", 4,                 // ➕ Multithreading
-                     "sliced-threads", TRUE,       // ➕ Threads por slice
-                     "vbv-buf-capacity", 120,      // ➕ Buffer VBV
+                     "bitrate", 2000,              // 2 Mbps (más conservador)
+                     "key-int-max", 60,            // Keyframes cada 2 seg (30fps)
+                     "threads", 4,                 // Multithreading
+                     "sliced-threads", TRUE,       // Threads por slice
+                     "vbv-buf-capacity", 400,      // Buffer VBV más amplio
                      "byte-stream", TRUE,          // ➕ Para WebRTC
                      "aud", FALSE,                 // ➕ Deshabilitar AUD
                      "cabac", FALSE,               // ➕ Más rápido sin CABAC
@@ -346,7 +346,7 @@ bool GStreamerManager::createWebRTCElements() {
         g_object_set(G_OBJECT(rtph264pay_),
                      "config-interval", -1,        // ⬆️ SPS/PPS en cada keyframe
                      "pt", 96,
-                     "mtu", 1200,                  // ➕ MTU optimizado
+                     "mtu", 1400,                  // MTU para redes locales
                      "aggregate-mode", 1,          // ➕ zero-latency
                      NULL);
     } else {
