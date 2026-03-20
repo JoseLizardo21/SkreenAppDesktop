@@ -3,11 +3,15 @@
 
 ```bash
 sudo dnf install -y \
+    gstreamer1-devel \
     gstreamer1-plugins-base \
+    gstreamer1-plugins-base-devel \
     gstreamer1-plugins-good \
     gstreamer1-plugins-bad-free \
     gstreamer1-plugins-bad-free-extras \
+    gstreamer1-plugins-bad-free-devel \
     libnice \
+    libnice-devel \
     libnice-gstreamer1
 ```
 
