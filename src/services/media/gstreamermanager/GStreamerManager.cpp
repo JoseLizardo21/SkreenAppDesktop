@@ -93,13 +93,23 @@ bool GStreamerManager::configurePipeWireSource() {
 bool GStreamerManager::configureFrameRateFilter() {
     std::cout << "  Configuring frame rate filter...\n";
 
-    GstCaps* caps = gst_caps_new_simple("video/x-raw",
-                                        "framerate", GST_TYPE_FRACTION, 30, 1,
-                                        NULL);
-    g_object_set(G_OBJECT(capsfilter_rate_), "caps", caps, NULL);
-    gst_caps_unref(caps);
+    // Solo descartar frames, nunca duplicar (evita buffering interno)
+    g_object_set(G_OBJECT(videorate_), "drop-only", TRUE, NULL);
 
-    std::cout << "  ✓ Frame rate limited to 30 fps\n";
+    GstCaps* caps_rate = gst_caps_new_simple("video/x-raw",
+                                             "framerate", GST_TYPE_FRACTION, 30, 1,
+                                             NULL);
+    g_object_set(G_OBJECT(capsfilter_rate_), "caps", caps_rate, NULL);
+    gst_caps_unref(caps_rate);
+
+    GstCaps* caps_scale = gst_caps_new_simple("video/x-raw",
+                                              "width", G_TYPE_INT, 1280,
+                                              "height", G_TYPE_INT, 720,
+                                              NULL);
+    g_object_set(G_OBJECT(capsfilter_scale_), "caps", caps_scale, NULL);
+    gst_caps_unref(caps_scale);
+
+    std::cout << "  ✓ Frame rate limited to 30 fps, resolution capped to 1280x720\n";
     return true;
 }
 
@@ -304,10 +314,10 @@ bool GStreamerManager::createWebRTCElements() {
     queue_webrtc_ = gst_element_factory_make("queue", "queue_webrtc");
     // 🔥 CONFIGURAR QUEUE PARA BAJA LATENCIA
     g_object_set(G_OBJECT(queue_webrtc_),
-                 "max-size-buffers", 3,       // ➕ 3 buffers para evitar drops
-                 "max-size-bytes", 0,         // ➕ Sin límite de bytes
-                 "max-size-time", 0,          // ➕ Sin límite de tiempo
-                 "leaky", 2,                  // ➕ downstream (descartar viejos)
+                 "max-size-buffers", 1,
+                 "max-size-bytes", 0,
+                 "max-size-time", 0,
+                 "leaky", 2,                  // downstream: descarta frames viejos
                  NULL);
     videoconvert_webrtc_ = gst_element_factory_make("videoconvert", "convert_webrtc");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtc");
