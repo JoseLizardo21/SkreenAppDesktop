@@ -28,6 +28,7 @@ find_package(Threads REQUIRED)
 # ========== Incluir directorios de headers ==========
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/include
     ${GTK_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
     ${DBUS_INCLUDE_DIRS}
