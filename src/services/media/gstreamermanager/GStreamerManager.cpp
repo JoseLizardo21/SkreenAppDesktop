@@ -60,15 +60,17 @@ bool GStreamerManager::createElements() {
     std::cout << "  Creating GStreamer elements...\n";
 
     pipewiresrc_ = gst_element_factory_make("pipewiresrc", "source");
-    videoconvert1_ = gst_element_factory_make("videoconvert", "convert1");
     videorate_ = gst_element_factory_make("videorate", "rate");
     capsfilter_rate_ = gst_element_factory_make("capsfilter", "filter_rate");
-    videoscale_ = gst_element_factory_make("videoscale", "scale");
-    capsfilter_scale_ = gst_element_factory_make("capsfilter", "filter_scale");
-    videoconvert2_ = gst_element_factory_make("videoconvert", "convert2");
+    queue_main_ = gst_element_factory_make("queue", "queue_main");
+    g_object_set(G_OBJECT(queue_main_),
+                 "max-size-buffers", 1,
+                 "max-size-bytes", 0,
+                 "max-size-time", 0,
+                 "leaky", 2,
+                 NULL);
 
-    if (!pipewiresrc_ || !videoconvert1_ || !videorate_ || !capsfilter_rate_ ||
-        !videoscale_ || !capsfilter_scale_ || !videoconvert2_) {
+    if (!pipewiresrc_ || !videorate_ || !capsfilter_rate_ || !queue_main_) {
         error("Failed to create GStreamer elements");
         return false;
     }
@@ -113,21 +115,15 @@ bool GStreamerManager::linkElements() {
 
     gst_bin_add_many(GST_BIN(pipeline_),
                      pipewiresrc_,
-                     videoconvert1_,
                      videorate_,
                      capsfilter_rate_,
-                     videoscale_,
-                     capsfilter_scale_,
-                     videoconvert2_,
+                     queue_main_,
                      NULL);
 
     if (!gst_element_link_many(pipewiresrc_,
-                               videoconvert1_,
                                videorate_,
                                capsfilter_rate_,
-                               videoscale_,
-                               capsfilter_scale_,
-                               videoconvert2_,
+                               queue_main_,
                                NULL)) {
         error("Failed to link pipeline elements");
         return false;
@@ -234,12 +230,9 @@ void GStreamerManager::cleanup() {
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
         pipewiresrc_ = nullptr;
-        videoconvert1_ = nullptr;
         videorate_ = nullptr;
         capsfilter_rate_ = nullptr;
-        videoscale_ = nullptr;
-        capsfilter_scale_ = nullptr;
-        videoconvert2_ = nullptr;
+        queue_main_ = nullptr;
     }
 }
 
@@ -307,7 +300,6 @@ bool GStreamerManager::createWebRTCElements() {
     videoscale_webrtc_ = gst_element_factory_make("videoscale", "scale_webrtc");
     capsfilter_webrtc_ = gst_element_factory_make("capsfilter", "caps_webrtc");
     GstCaps* caps_webrtc = gst_caps_new_simple("video/x-raw",
-                                               "format", G_TYPE_STRING, "I420",
                                                "width",  G_TYPE_INT, 1280,
                                                "height", G_TYPE_INT, 720,
                                                NULL);
@@ -462,15 +454,7 @@ bool GStreamerManager::linkWebRTCBranch() {
         return false;
     }
 
-    std::cout << "  Enlazando WebRTC (sin preview)...\n";
-
-    GstState current_state;
-    gst_element_get_state(pipeline_, &current_state, nullptr, 0);
-
-    if (current_state == GST_STATE_PLAYING) {
-        gst_element_set_state(pipeline_, GST_STATE_PAUSED);
-        gst_element_get_state(pipeline_, nullptr, nullptr, GST_CLOCK_TIME_NONE);
-    }
+    std::cout << "  Enlazando WebRTC...\n";
 
     gst_bin_add_many(GST_BIN(pipeline_),
                      queue_webrtc_,
@@ -482,13 +466,13 @@ bool GStreamerManager::linkWebRTCBranch() {
                      webrtcbin_,
                      NULL);
 
-    // videoconvert2 → queue_webrtc
-    if (!gst_element_link(videoconvert2_, queue_webrtc_)) {
-        error("Failed to link videoconvert2 to queue_webrtc");
+    // queue_main → queue_webrtc
+    if (!gst_element_link(queue_main_, queue_webrtc_)) {
+        error("Failed to link queue_main to queue_webrtc");
         return false;
     }
 
-    // queue → scale → caps(I420,1280x720) → convert → encoder → payloader
+    // queue → scale → capsfilter(1280x720) → convert → encoder → payloader
     if (!gst_element_link_many(queue_webrtc_,
                                videoscale_webrtc_,
                                capsfilter_webrtc_,
@@ -517,20 +501,7 @@ bool GStreamerManager::linkWebRTCBranch() {
     gst_object_unref(pay_src);
     gst_object_unref(webrtc_sink);
 
-    // Sync states
-    gst_element_sync_state_with_parent(queue_webrtc_);
-    gst_element_sync_state_with_parent(videoscale_webrtc_);
-    gst_element_sync_state_with_parent(capsfilter_webrtc_);
-    gst_element_sync_state_with_parent(videoconvert_webrtc_);
-    gst_element_sync_state_with_parent(x264enc_);
-    gst_element_sync_state_with_parent(rtph264pay_);
-    gst_element_sync_state_with_parent(webrtcbin_);
-
-    if (current_state == GST_STATE_PLAYING) {
-        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
-    }
-
-    std::cout << "  ✓ WebRTC enlazado sin preview\n";
+    std::cout << "  ✓ WebRTC enlazado\n";
     return true;
 }
 

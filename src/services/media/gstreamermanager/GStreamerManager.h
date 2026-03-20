@@ -50,12 +50,9 @@ private:
     // Pipeline elements existentes
     GstElement* pipeline_{nullptr};
     GstElement* pipewiresrc_{nullptr};
-    GstElement* videoconvert1_{nullptr};
     GstElement* videorate_{nullptr};
     GstElement* capsfilter_rate_{nullptr};
-    GstElement* videoscale_{nullptr};
-    GstElement* capsfilter_scale_{nullptr};
-    GstElement* videoconvert2_{nullptr};
+    GstElement* queue_main_{nullptr};
 
     // ========== NUEVO: WebRTC elements ==========
     GstElement* queue_webrtc_{nullptr};

@@ -77,18 +77,19 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         if (gstreamer_manager_->initializePipeline(fd, node_id)) {
             std::cout << "🎬 GStreamer pipeline initialized\n";
 
-            // Start GStreamer capture
+            // Link WebRTC branch BEFORE starting so there are no unlinked elements
+            if (!gstreamer_manager_->enableWebRTC("ws://localhost:9001")) {
+                std::cerr << "⚠️ Failed to enable WebRTC\n";
+                onGStreamerError("Failed to enable WebRTC");
+                return;
+            }
+            std::cout << "🌐 WebRTC branch linked\n";
+
+            // Start pipeline (everything already linked)
             if (gstreamer_manager_->startCapture()) {
                 std::cout << "▶️ GStreamer capture started\n";
-
-                // Enable WebRTC streaming
-                if (gstreamer_manager_->enableWebRTC("ws://localhost:9001")) {
-                    std::cout << "🌐 WebRTC enabled and connected to signaling server\n";
-                    if (view_) {
-                        view_->setTransmitting(true);
-                    }
-                } else {
-                    std::cerr << "⚠️ Failed to enable WebRTC, continuing with local preview only\n";
+                if (view_) {
+                    view_->setTransmitting(true);
                 }
             } else {
                 onGStreamerError("Failed to start GStreamer capture");
