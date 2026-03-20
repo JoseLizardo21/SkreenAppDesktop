@@ -102,14 +102,7 @@ bool GStreamerManager::configureFrameRateFilter() {
     g_object_set(G_OBJECT(capsfilter_rate_), "caps", caps_rate, NULL);
     gst_caps_unref(caps_rate);
 
-    GstCaps* caps_scale = gst_caps_new_simple("video/x-raw",
-                                              "width", G_TYPE_INT, 1280,
-                                              "height", G_TYPE_INT, 720,
-                                              NULL);
-    g_object_set(G_OBJECT(capsfilter_scale_), "caps", caps_scale, NULL);
-    gst_caps_unref(caps_scale);
-
-    std::cout << "  ✓ Frame rate limited to 30 fps, resolution capped to 1280x720\n";
+    std::cout << "  ✓ Frame rate limited to 30 fps\n";
     return true;
 }
 
@@ -311,8 +304,17 @@ bool GStreamerManager::createWebRTCElements() {
     std::cout << "  Creando elementos WebRTC...\n";
     
     // Elementos base
+    videoscale_webrtc_ = gst_element_factory_make("videoscale", "scale_webrtc");
+    capsfilter_webrtc_ = gst_element_factory_make("capsfilter", "caps_webrtc");
+    GstCaps* caps_webrtc = gst_caps_new_simple("video/x-raw",
+                                               "format", G_TYPE_STRING, "I420",
+                                               "width",  G_TYPE_INT, 1280,
+                                               "height", G_TYPE_INT, 720,
+                                               NULL);
+    g_object_set(G_OBJECT(capsfilter_webrtc_), "caps", caps_webrtc, NULL);
+    gst_caps_unref(caps_webrtc);
+
     queue_webrtc_ = gst_element_factory_make("queue", "queue_webrtc");
-    // 🔥 CONFIGURAR QUEUE PARA BAJA LATENCIA
     g_object_set(G_OBJECT(queue_webrtc_),
                  "max-size-buffers", 1,
                  "max-size-bytes", 0,
@@ -322,84 +324,116 @@ bool GStreamerManager::createWebRTCElements() {
     videoconvert_webrtc_ = gst_element_factory_make("videoconvert", "convert_webrtc");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtc");
     
-    // ========== INTENTAR x264 PRIMERO ==========
-    x264enc_ = gst_element_factory_make("x264enc", "encoder");
-    
-    if (x264enc_) {
-        // x264 disponible
-        std::cout << "  ✓ Usando H.264 (x264enc)\n";
+    // ========== SELECCIÓN DE ENCODER: HW primero, SW fallback ==========
+    struct EncoderCandidate {
+        const char* name;
+        const char* label;
+    };
+    static const EncoderCandidate h264_candidates[] = {
+        {"vah264enc",    "Intel/AMD VA-API (nuevo)"},
+        {"vaapih264enc", "Intel/AMD VAAPI"},
+        {"nvh264enc",    "NVIDIA NVENC"},
+        {"x264enc",      "x264 software"},
+        {"openh264enc",  "OpenH264 software"},
+        {nullptr, nullptr}
+    };
+
+    for (int i = 0; h264_candidates[i].name && !x264enc_; i++) {
+        x264enc_ = gst_element_factory_make(h264_candidates[i].name, "encoder");
+        if (!x264enc_) continue;
+
+        std::cout << "  ✓ Encoder H.264: " << h264_candidates[i].label << "\n";
+
+        if (std::string(h264_candidates[i].name) == "vah264enc") {
+            g_object_set(G_OBJECT(x264enc_),
+                         "bitrate", 2000,
+                         "key-int-max", 60,
+                         "target-usage", 7,   // máxima velocidad
+                         NULL);
+        } else if (std::string(h264_candidates[i].name) == "vaapih264enc") {
+            g_object_set(G_OBJECT(x264enc_),
+                         "bitrate", 2000,
+                         "keyframe-period", 60,
+                         "quality-level", 7,  // máxima velocidad (1-7)
+                         NULL);
+        } else if (std::string(h264_candidates[i].name) == "nvh264enc") {
+            g_object_set(G_OBJECT(x264enc_),
+                         "bitrate", 2000,
+                         "preset", 6,         // low-latency-hp
+                         "rc-mode", 2,        // CBR
+                         "zerolatency", TRUE,
+                         NULL);
+        } else if (std::string(h264_candidates[i].name) == "x264enc") {
+            g_object_set(G_OBJECT(x264enc_),
+                         "tune", 0x00000004,  // zerolatency
+                         "speed-preset", 1,   // ultrafast
+                         "bitrate", 2000,
+                         "key-int-max", 60,
+                         "threads", 4,
+                         "sliced-threads", TRUE,
+                         "vbv-buf-capacity", 400,
+                         "byte-stream", TRUE,
+                         "aud", FALSE,
+                         "cabac", FALSE,
+                         "dct8x8", FALSE,
+                         "bframes", 0,
+                         NULL);
+        } else {
+            // openh264enc
+            g_object_set(G_OBJECT(x264enc_),
+                         "bitrate", 2000000,  // bits/s
+                         "complexity", 0,     // low (más rápido)
+                         "rate-control", 1,   // bitrate-based
+                         NULL);
+        }
+
         rtph264pay_ = gst_element_factory_make("rtph264pay", "payloader");
-        
         if (!rtph264pay_) {
-            error("Failed to create rtph264pay");
             gst_object_unref(x264enc_);
             x264enc_ = nullptr;
-            return false;
         }
-        
-        // Configurar x264
-        g_object_set(G_OBJECT(x264enc_),
-                     "tune", 0x00000004,           // zerolatency
-                     "speed-preset", 1,            // ultrafast
-                     "bitrate", 2000,              // 2 Mbps (más conservador)
-                     "key-int-max", 60,            // Keyframes cada 2 seg (30fps)
-                     "threads", 4,                 // Multithreading
-                     "sliced-threads", TRUE,       // Threads por slice
-                     "vbv-buf-capacity", 400,      // Buffer VBV más amplio
-                     "byte-stream", TRUE,          // ➕ Para WebRTC
-                     "aud", FALSE,                 // ➕ Deshabilitar AUD
-                     "cabac", FALSE,               // ➕ Más rápido sin CABAC
-                     "dct8x8", FALSE,              // ➕ Más rápido
-                     "bframes", 0,                 // ➕ Sin B-frames
-                     NULL);
-        
-        g_object_set(G_OBJECT(rtph264pay_),
-                     "config-interval", -1,        // ⬆️ SPS/PPS en cada keyframe
-                     "pt", 96,
-                     "mtu", 1400,                  // MTU para redes locales
-                     "aggregate-mode", 1,          // ➕ zero-latency
-                     NULL);
-    } else {
-        // ========== FALLBACK A VP8 ==========
-        std::cout << "  ℹ️  x264enc no disponible, usando VP8\n";
-        
+    }
+
+    // ========== FALLBACK FINAL: VP8 ==========
+    if (!x264enc_) {
+        std::cout << "  ℹ️  Sin encoder H.264, usando VP8\n";
         x264enc_ = gst_element_factory_make("vp8enc", "encoder");
         rtph264pay_ = gst_element_factory_make("rtpvp8pay", "payloader");
-        
+
         if (!x264enc_ || !rtph264pay_) {
-            error("No hay encoder de video disponible (intenté x264 y vp8)");
-            
-            // Debug detallado
-            if (!x264enc_) std::cerr << "  ❌ vp8enc tampoco está disponible\n";
-            if (!rtph264pay_) std::cerr << "  ❌ rtpvp8pay no está disponible\n";
-            
+            error("No hay encoder de video disponible");
+            if (!x264enc_)   std::cerr << "  ❌ vp8enc no disponible\n";
+            if (!rtph264pay_) std::cerr << "  ❌ rtpvp8pay no disponible\n";
             return false;
         }
-        
-        // Configurar VP8
+
         g_object_set(G_OBJECT(x264enc_),
-                     "deadline", 1,              // Realtime
-                     "target-bitrate", 2000000,  // 2 Mbps
-                     "cpu-used", 4,              // Velocidad de encoding
+                     "deadline", 1,
+                     "target-bitrate", 2000000,
+                     "cpu-used", 4,
                      "keyframe-max-dist", 30,
                      NULL);
-        
+        g_object_set(G_OBJECT(rtph264pay_), "pt", 96, NULL);
+    } else {
         g_object_set(G_OBJECT(rtph264pay_),
+                     "config-interval", -1,
                      "pt", 96,
+                     "mtu", 1400,
+                     "aggregate-mode", 1,
                      NULL);
     }
     
     // ========== VERIFICAR TODOS LOS ELEMENTOS ==========
-    if (!queue_webrtc_ ||
+    if (!queue_webrtc_ || !videoscale_webrtc_ || !capsfilter_webrtc_ ||
         !videoconvert_webrtc_ || !x264enc_ || !rtph264pay_ || !webrtcbin_) {
         error("Failed to create one or more WebRTC elements");
-        // Debug detallado
-        if (!queue_webrtc_) std::cerr << "  ❌ queue_webrtc\n";
+        if (!queue_webrtc_)        std::cerr << "  ❌ queue_webrtc\n";
+        if (!videoscale_webrtc_)   std::cerr << "  ❌ videoscale_webrtc\n";
+        if (!capsfilter_webrtc_)   std::cerr << "  ❌ capsfilter_webrtc\n";
         if (!videoconvert_webrtc_) std::cerr << "  ❌ videoconvert_webrtc\n";
-        if (!x264enc_) std::cerr << "  ❌ encoder\n";
-        if (!rtph264pay_) std::cerr << "  ❌ payloader\n";
-        if (!webrtcbin_) std::cerr << "  ❌ webrtcbin\n";
-        
+        if (!x264enc_)             std::cerr << "  ❌ encoder\n";
+        if (!rtph264pay_)          std::cerr << "  ❌ payloader\n";
+        if (!webrtcbin_)           std::cerr << "  ❌ webrtcbin\n";
         return false;
     }
     
@@ -431,6 +465,8 @@ bool GStreamerManager::linkWebRTCBranch() {
 
     gst_bin_add_many(GST_BIN(pipeline_),
                      queue_webrtc_,
+                     videoscale_webrtc_,
+                     capsfilter_webrtc_,
                      videoconvert_webrtc_,
                      x264enc_,
                      rtph264pay_,
@@ -443,8 +479,10 @@ bool GStreamerManager::linkWebRTCBranch() {
         return false;
     }
 
-    // queue → convert → encoder → payloader
+    // queue → scale → caps(I420,1280x720) → convert → encoder → payloader
     if (!gst_element_link_many(queue_webrtc_,
+                               videoscale_webrtc_,
+                               capsfilter_webrtc_,
                                videoconvert_webrtc_,
                                x264enc_,
                                rtph264pay_,
@@ -472,6 +510,8 @@ bool GStreamerManager::linkWebRTCBranch() {
 
     // Sync states
     gst_element_sync_state_with_parent(queue_webrtc_);
+    gst_element_sync_state_with_parent(videoscale_webrtc_);
+    gst_element_sync_state_with_parent(capsfilter_webrtc_);
     gst_element_sync_state_with_parent(videoconvert_webrtc_);
     gst_element_sync_state_with_parent(x264enc_);
     gst_element_sync_state_with_parent(rtph264pay_);

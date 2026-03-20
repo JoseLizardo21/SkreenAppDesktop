@@ -10,10 +10,14 @@ sudo dnf install -y \
     gstreamer1-plugins-bad-free \
     gstreamer1-plugins-bad-free-extras \
     gstreamer1-plugins-bad-free-devel \
+    gstreamer1-vaapi \
     libnice \
     libnice-devel \
     libnice-gstreamer1
 ```
+
+> `gstreamer1-vaapi` habilita encoding por hardware en Intel/AMD (vaapih264enc).
+> En NVIDIA instala adicionalmente `gstreamer1-plugins-bad-free` con soporte NVENC.
 
 # Ejecutar
 
