@@ -327,46 +327,56 @@ bool GStreamerManager::createWebRTCElements() {
     // ========== SELECCIÓN DE ENCODER: HW primero, SW fallback ==========
     struct EncoderCandidate {
         const char* name;
+        const char* payloader;
         const char* label;
     };
-    static const EncoderCandidate h264_candidates[] = {
-        {"vah264enc",    "Intel/AMD VA-API (nuevo)"},
-        {"vaapih264enc", "Intel/AMD VAAPI"},
-        {"nvh264enc",    "NVIDIA NVENC"},
-        {"x264enc",      "x264 software"},
-        {"openh264enc",  "OpenH264 software"},
-        {nullptr, nullptr}
+    static const EncoderCandidate candidates[] = {
+        {"vah264enc",    "rtph264pay", "Intel/AMD H.264 VA-API (nuevo)"},
+        {"vaapih264enc", "rtph264pay", "Intel/AMD H.264 VAAPI"},
+        {"nvh264enc",    "rtph264pay", "NVIDIA H.264 NVENC"},
+        {"vavp9lpenc",   "rtpvp9pay",  "Intel VP9 VA-API (hardware)"},
+        {"x264enc",      "rtph264pay", "H.264 x264 software"},
+        {"openh264enc",  "rtph264pay", "H.264 OpenH264 software"},
+        {"vp8enc",       "rtpvp8pay",  "VP8 software"},
+        {nullptr, nullptr, nullptr}
     };
 
-    for (int i = 0; h264_candidates[i].name && !x264enc_; i++) {
-        x264enc_ = gst_element_factory_make(h264_candidates[i].name, "encoder");
+    for (int i = 0; candidates[i].name && !x264enc_; i++) {
+        x264enc_ = gst_element_factory_make(candidates[i].name, "encoder");
         if (!x264enc_) continue;
 
-        std::cout << "  ✓ Encoder H.264: " << h264_candidates[i].label << "\n";
+        const std::string enc_name = candidates[i].name;
+        std::cout << "  ✓ Encoder: " << candidates[i].label << "\n";
 
-        if (std::string(h264_candidates[i].name) == "vah264enc") {
+        if (enc_name == "vah264enc") {
             g_object_set(G_OBJECT(x264enc_),
                          "bitrate", 2000,
                          "key-int-max", 60,
-                         "target-usage", 7,   // máxima velocidad
+                         "target-usage", 7,
                          NULL);
-        } else if (std::string(h264_candidates[i].name) == "vaapih264enc") {
+        } else if (enc_name == "vaapih264enc") {
             g_object_set(G_OBJECT(x264enc_),
                          "bitrate", 2000,
                          "keyframe-period", 60,
-                         "quality-level", 7,  // máxima velocidad (1-7)
+                         "quality-level", 7,
                          NULL);
-        } else if (std::string(h264_candidates[i].name) == "nvh264enc") {
+        } else if (enc_name == "nvh264enc") {
             g_object_set(G_OBJECT(x264enc_),
                          "bitrate", 2000,
-                         "preset", 6,         // low-latency-hp
-                         "rc-mode", 2,        // CBR
+                         "preset", 6,
+                         "rc-mode", 2,
                          "zerolatency", TRUE,
                          NULL);
-        } else if (std::string(h264_candidates[i].name) == "x264enc") {
+        } else if (enc_name == "vavp9lpenc") {
             g_object_set(G_OBJECT(x264enc_),
-                         "tune", 0x00000004,  // zerolatency
-                         "speed-preset", 1,   // ultrafast
+                         "bitrate", 2000,
+                         "key-int-max", 60,
+                         "target-usage", 7,
+                         NULL);
+        } else if (enc_name == "x264enc") {
+            g_object_set(G_OBJECT(x264enc_),
+                         "tune", 0x00000004,
+                         "speed-preset", 1,
                          "bitrate", 2000,
                          "key-int-max", 60,
                          "threads", 4,
@@ -378,49 +388,48 @@ bool GStreamerManager::createWebRTCElements() {
                          "dct8x8", FALSE,
                          "bframes", 0,
                          NULL);
-        } else {
-            // openh264enc
+        } else if (enc_name == "openh264enc") {
             g_object_set(G_OBJECT(x264enc_),
-                         "bitrate", 2000000,  // bits/s
-                         "complexity", 0,     // low (más rápido)
-                         "rate-control", 1,   // bitrate-based
+                         "bitrate", 2000000,
+                         "complexity", 0,
+                         "rate-control", 1,
+                         NULL);
+        } else {
+            // vp8enc
+            g_object_set(G_OBJECT(x264enc_),
+                         "deadline", 1,
+                         "target-bitrate", 2000000,
+                         "cpu-used", 4,
+                         "keyframe-max-dist", 30,
                          NULL);
         }
 
-        rtph264pay_ = gst_element_factory_make("rtph264pay", "payloader");
+        rtph264pay_ = gst_element_factory_make(candidates[i].payloader, "payloader");
         if (!rtph264pay_) {
             gst_object_unref(x264enc_);
             x264enc_ = nullptr;
+            continue;
+        }
+
+        // Configurar payloader según tipo
+        if (enc_name == "vp8enc") {
+            g_object_set(G_OBJECT(rtph264pay_), "pt", 96, NULL);
+        } else if (enc_name == "vavp9lpenc") {
+            g_object_set(G_OBJECT(rtph264pay_), "pt", 97, NULL);
+        } else {
+            // H.264
+            g_object_set(G_OBJECT(rtph264pay_),
+                         "config-interval", -1,
+                         "pt", 96,
+                         "mtu", 1400,
+                         "aggregate-mode", 1,
+                         NULL);
         }
     }
 
-    // ========== FALLBACK FINAL: VP8 ==========
     if (!x264enc_) {
-        std::cout << "  ℹ️  Sin encoder H.264, usando VP8\n";
-        x264enc_ = gst_element_factory_make("vp8enc", "encoder");
-        rtph264pay_ = gst_element_factory_make("rtpvp8pay", "payloader");
-
-        if (!x264enc_ || !rtph264pay_) {
-            error("No hay encoder de video disponible");
-            if (!x264enc_)   std::cerr << "  ❌ vp8enc no disponible\n";
-            if (!rtph264pay_) std::cerr << "  ❌ rtpvp8pay no disponible\n";
-            return false;
-        }
-
-        g_object_set(G_OBJECT(x264enc_),
-                     "deadline", 1,
-                     "target-bitrate", 2000000,
-                     "cpu-used", 4,
-                     "keyframe-max-dist", 30,
-                     NULL);
-        g_object_set(G_OBJECT(rtph264pay_), "pt", 96, NULL);
-    } else {
-        g_object_set(G_OBJECT(rtph264pay_),
-                     "config-interval", -1,
-                     "pt", 96,
-                     "mtu", 1400,
-                     "aggregate-mode", 1,
-                     NULL);
+        error("No hay encoder de video disponible");
+        return false;
     }
     
     // ========== VERIFICAR TODOS LOS ELEMENTOS ==========
