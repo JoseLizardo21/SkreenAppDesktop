@@ -113,6 +113,7 @@ bool GStreamerManager::linkElements() {
 
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
+
     gst_bin_add_many(GST_BIN(pipeline_),
                      pipewiresrc_,
                      videorate_,
@@ -361,7 +362,8 @@ bool GStreamerManager::createWebRTCElements() {
                          NULL);
         } else if (enc_name == "vavp9lpenc") {
             g_object_set(G_OBJECT(x264enc_),
-                         "bitrate", 2000,
+                         "rate-control", 16,  // CQP: sin throttling de bitrate
+                         "qp", 35,            // calidad (0-255, menor=mejor)
                          "key-int-max", 60,
                          "target-usage", 7,
                          NULL);
