@@ -1,7 +1,6 @@
 #include "HomeController.h"
 #include "../../views/home/Home.h"
 #include "../../services/system/portalmanager/PortalManager.h"
-#include "../../services/websocketclient/WebSocketClient.h"
 #include <memory>
 #include <iostream>
 #include <cstdlib>
@@ -14,130 +13,76 @@ static bool isFirewalldActive() {
 
 static void openFirewallPort() {
     if (!isFirewalldActive()) return;
-    if (std::system("firewall-cmd --query-port=9001/tcp --zone=public -q 2>/dev/null") == 0) return;
-    if (std::system("pkexec firewall-cmd --add-port=9001/tcp --zone=public 2>/dev/null") == 0) {
+    if (std::system("firewall-cmd --query-port=9002/tcp --zone=public -q 2>/dev/null") == 0) return;
+    if (std::system("pkexec firewall-cmd --add-port=9002/tcp --zone=public 2>/dev/null") == 0) {
         firewalld_port_opened = true;
-        std::cout << "🔓 Puerto 9001 abierto en firewalld\n";
-    } else {
-        std::cerr << "⚠️ No se pudo abrir el puerto 9001 en firewalld\n";
+        std::cout << "🔓 Puerto 9002 abierto en firewalld\n";
     }
 }
 
 static void closeFirewallPort() {
     if (!firewalld_port_opened) return;
-    std::system("pkexec firewall-cmd --remove-port=9001/tcp --zone=public 2>/dev/null");
+    std::system("pkexec firewall-cmd --remove-port=9002/tcp --zone=public 2>/dev/null");
     firewalld_port_opened = false;
-    std::cout << "🔒 Puerto 9001 cerrado en firewalld\n";
+    std::cout << "🔒 Puerto 9002 cerrado en firewalld\n";
 }
 
-HomeController::HomeController(Home* home, WebSocketClient* ws)
-    : view_(home), ws_(ws) {
+HomeController::HomeController(Home* home)
+    : view_(home) {
+    gstreamer_manager_ = std::make_unique<GStreamerManager>();
     portal_manager_ = std::make_unique<PortalManager>();
-    gstreamer_manager_ = std::make_unique<GStreamerManager>(ws_);
 
     portal_manager_->setPortalCallback(
         [this](const std::string& session_handle, uint32_t node_id, int fd) {
             onPortalComplete(session_handle, node_id, fd);
         });
-    view_->setOnRequestPermissionsCallback(
-        [this]() { handleRequestPermissions(); });
-    view_->setOnCancelTransmissionCallback(
-        [this]() { handleStopCapture(); });
-    ws_->setTransmitButtonEnabled(
-        [this](bool isEnabled){enabledButtonTransmiter(isEnabled);});
+    view_->setOnRequestPermissionsCallback([this]() { handleRequestPermissions(); });
+    view_->setOnCancelTransmissionCallback([this]() { handleStopCapture(); });
+    view_->setTransmitButtonEnabled(true);
 }
 
-HomeController::~HomeController() {
-    // handleStopCapture();
-}
+HomeController::~HomeController() {}
 
 void HomeController::handleRequestPermissions() {
     openFirewallPort();
-
-    if (portal_manager_) {
-        portal_manager_->startAsync();
-    }
+    if (portal_manager_) portal_manager_->startAsync();
 }
 
 void HomeController::onPortalComplete(const std::string& session_handle,
-                                         uint32_t node_id,
-                                         int fd) {
-    // std::cout << "Portal workflow complete\n";
-    // std::cout << "   Session: " << session_handle << "\n";
-    // std::cout << "   Node ID: " << node_id << "\n";
-    // std::cout << "   FD: " << fd << "\n";
-    
-    // Update capture session
-    // if (capture_session_) {
-    //     capture_session_->onPortalComplete(session_handle, node_id, fd);
-    // }
+                                      uint32_t node_id, int fd) {
+    (void)session_handle;
 
-    // Initialize GStreamer pipeline with portal data
-    if (gstreamer_manager_) {
-        if (gstreamer_manager_->initializePipeline(fd, node_id)) {
-            std::cout << "🎬 GStreamer pipeline initialized\n";
+    if (!gstreamer_manager_) return;
 
-            // Link WebRTC branch BEFORE starting so there are no unlinked elements
-            if (!gstreamer_manager_->enableWebRTC("ws://localhost:9001")) {
-                std::cerr << "⚠️ Failed to enable WebRTC\n";
-                onGStreamerError("Failed to enable WebRTC");
-                return;
-            }
-            std::cout << "🌐 WebRTC branch linked\n";
-
-            // Start pipeline (everything already linked)
-            if (gstreamer_manager_->startCapture()) {
-                std::cout << "▶️ GStreamer capture started\n";
-                if (view_) {
-                    view_->setTransmitting(true);
-                }
-            } else {
-                onGStreamerError("Failed to start GStreamer capture");
-            }
-        } else {
-            onGStreamerError("Failed to initialize GStreamer pipeline");
-        }
-    }
-}
-
-void HomeController::enabledButtonTransmiter(const bool isEnabled) {
-    if(view_) {
-        view_->setTransmitButtonEnabled(isEnabled);
+    if (!gstreamer_manager_->initializePipeline(fd, node_id)) {
+        onGStreamerError("Failed to initialize pipeline");
+        return;
     }
 
-    // When device disconnects, stop capture sessions
-    if (!isEnabled) {
-        handleStopCapture();
+    if (!gstreamer_manager_->startCapture()) {
+        onGStreamerError("Failed to start capture");
+        return;
     }
+
+    if (view_) view_->setTransmitting(true);
+    std::cout << "📡 Streaming TCP en puerto 9003\n";
+    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002\n";
 }
 
 void HomeController::onGStreamerError(const std::string& error) {
-    std::cerr << "GStreamer error: " << error << "\n";
-
+    std::cerr << "Error: " << error << "\n";
     handleStopCapture();
-
-    if (view_) {
-        // Could show error dialog here
-    }
 }
 
+
 void HomeController::handleStopCapture() {
-    std::cout << "Stopping capture\n";
     closeFirewallPort();
 
-    // Update UI
-    if (view_) {
-        view_->setTransmitting(false);
-    }
+    if (view_) view_->setTransmitting(false);
 
-    // Disable WebRTC first
     if (gstreamer_manager_) {
-        gstreamer_manager_->disableWebRTC();
         gstreamer_manager_->stopCapture();
     }
 
-    // Stop portal workflow
-    if (portal_manager_) {
-        portal_manager_->stop();
-    }
+    if (portal_manager_) portal_manager_->stop();
 }

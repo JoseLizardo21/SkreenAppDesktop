@@ -5,9 +5,6 @@
 #include <gtk/gtk.h>
 #include <functional>
 
-// Forward declaration
-class HomeController;
-
 class Home {
     public:
         Home();
@@ -28,7 +25,6 @@ class Home {
         GtkWidget* cancel_button;
         std::function<void()> on_request_permissions_callback_;
         std::function<void()> on_cancel_transmission_callback_;
-
 };
 
 #endif

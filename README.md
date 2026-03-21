@@ -16,20 +16,9 @@ sudo dnf install -y \
     libnice-gstreamer1
 ```
 
-> `gstreamer1-vaapi` habilita encoding por hardware en Intel/AMD (vaapih264enc).
-> En NVIDIA instala adicionalmente `gstreamer1-plugins-bad-free` con soporte NVENC.
-
 # Ejecutar
 
-**Servidor**
-
-```bash
-cd server
-npm install
-npm start
-```
-
-**App**
+**App desktop**
 
 ```bash
 mkdir build && cd build
@@ -37,3 +26,15 @@ cmake ..
 make
 ./skreen_desktop
 ```
+
+# Conexión USB
+
+Conectar el celular por USB con USB debugging activado y ejecutar:
+
+```bash
+adb reverse tcp:9002 tcp:9002
+```
+
+Luego abrir la app en el celular y pulsar **Conectar**.
+
+> El servidor Node.js ya no es necesario.
