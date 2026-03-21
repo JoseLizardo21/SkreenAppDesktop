@@ -60,7 +60,6 @@ bool GStreamerManager::createElements() {
     capsfilter_scale_= gst_element_factory_make("capsfilter",   "filter_scale");
     videoconvert_    = gst_element_factory_make("videoconvert", "convert");
     h264parse_       = gst_element_factory_make("h264parse",    "parser");
-    mpegtsmux_       = gst_element_factory_make("mpegtsmux",   "muxer");
     appsink_         = gst_element_factory_make("appsink",      "sink");
 
     // Encoder: HW primero, SW fallback
@@ -110,11 +109,10 @@ bool GStreamerManager::createElements() {
 
     if (!pipewiresrc_ || !videorate_ || !capsfilter_rate_ || !queue_main_ ||
         !videoscale_ || !capsfilter_scale_ || !videoconvert_ ||
-        !encoder_ || !h264parse_ || !mpegtsmux_ || !appsink_) {
+        !encoder_ || !h264parse_ || !appsink_) {
         error("Failed to create one or more elements");
-        if (!encoder_)   std::cerr << "  ❌ No H.264 encoder available\n";
-        if (!mpegtsmux_) std::cerr << "  ❌ mpegtsmux not available\n";
-        if (!appsink_)   std::cerr << "  ❌ appsink not available\n";
+        if (!encoder_) std::cerr << "  ❌ No H.264 encoder available\n";
+        if (!appsink_) std::cerr << "  ❌ appsink not available\n";
         return false;
     }
 
@@ -123,11 +121,8 @@ bool GStreamerManager::createElements() {
                  "max-size-buffers", 1, "max-size-bytes", 0,
                  "max-size-time", 0, "leaky", 2, NULL);
 
-    // h264parse: SPS/PPS antes de cada IDR
+    // h264parse: SPS/PPS antes de cada IDR, formato Annex-B para MediaCodec
     g_object_set(G_OBJECT(h264parse_), "config-interval", -1, NULL);
-
-    // mpegtsmux: 7 TS packets por buffer (balance latencia/eficiencia)
-    g_object_set(G_OBJECT(mpegtsmux_), "alignment", 7, NULL);
 
     // appsink: sin sync, emit-signals para callback por cada buffer
     g_object_set(G_OBJECT(appsink_),
@@ -176,12 +171,12 @@ bool GStreamerManager::linkElements() {
     gst_bin_add_many(GST_BIN(pipeline_),
                      pipewiresrc_, videorate_, capsfilter_rate_, queue_main_,
                      videoscale_, capsfilter_scale_, videoconvert_,
-                     encoder_, h264parse_, mpegtsmux_, appsink_,
+                     encoder_, h264parse_, appsink_,
                      NULL);
 
     if (!gst_element_link_many(pipewiresrc_, videorate_, capsfilter_rate_, queue_main_,
                                videoscale_, capsfilter_scale_, videoconvert_,
-                               encoder_, h264parse_, mpegtsmux_, appsink_,
+                               encoder_, h264parse_, appsink_,
                                NULL)) {
         error("Failed to link pipeline elements");
         return false;
@@ -272,18 +267,6 @@ void GStreamerManager::acceptLoop() {
         int sndbuf = 262144;
         setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
-        // Leer y descartar la petición HTTP del cliente
-        char req[2048] = {};
-        recv(client_fd, req, sizeof(req) - 1, 0);
-
-        const char* headers =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: video/mp2t\r\n"
-            "Connection: close\r\n"
-            "Cache-Control: no-cache\r\n"
-            "\r\n";
-        send(client_fd, headers, strlen(headers), MSG_NOSIGNAL);
-
         std::lock_guard<std::mutex> lock(clients_mutex_);
         client_fds_.push_back(client_fd);
         std::cout << "📱 Cliente conectado  ip=" << ip << ":" << port
@@ -300,7 +283,16 @@ void GStreamerManager::sendToClients(const uint8_t* data, gsize size) {
 
     std::vector<int> to_remove;
 
+    // Prefijo de 4 bytes (big-endian) con el tamaño del frame H.264
+    uint8_t len_prefix[4] = {
+        static_cast<uint8_t>((size >> 24) & 0xFF),
+        static_cast<uint8_t>((size >> 16) & 0xFF),
+        static_cast<uint8_t>((size >>  8) & 0xFF),
+        static_cast<uint8_t>( size        & 0xFF),
+    };
+
     for (int fd : client_fds_) {
+        send(fd, len_prefix, 4, MSG_NOSIGNAL);
         ssize_t sent = send(fd, data, size, MSG_NOSIGNAL);
         if (sent < 0) {
             std::cout << "📴 Cliente desconectado  fd=" << fd
@@ -343,7 +335,7 @@ GstFlowReturn GStreamerManager::onNewSample(GstElement* appsink, gpointer user_d
             for (gsize i = 0; i < std::min(map.size, (gsize)8); i++)
                 std::printf("%02X ", map.data[i]);
             std::printf("\n");
-            std::cout << "   (MPEG-TS: primer byte debe ser 0x47)\n";
+            std::cout << "   (H.264 Annex-B: primeros bytes deben ser 00 00 00 01)\n";
         }
         self->sendToClients(map.data, map.size);
         gst_buffer_unmap(buffer, &map);
@@ -419,7 +411,7 @@ void GStreamerManager::cleanup() {
         pipeline_ = nullptr;
         pipewiresrc_ = videorate_ = capsfilter_rate_ = queue_main_ = nullptr;
         videoscale_ = capsfilter_scale_ = videoconvert_ = nullptr;
-        encoder_ = h264parse_ = mpegtsmux_ = appsink_ = nullptr;
+        encoder_ = h264parse_ = appsink_ = nullptr;
     }
 }
 

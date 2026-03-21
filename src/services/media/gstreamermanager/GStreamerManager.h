@@ -39,7 +39,6 @@ private:
     GstElement* videoconvert_{nullptr};
     GstElement* encoder_{nullptr};
     GstElement* h264parse_{nullptr};
-    GstElement* mpegtsmux_{nullptr};
     GstElement* appsink_{nullptr};
 
     bool is_capturing_{false};
