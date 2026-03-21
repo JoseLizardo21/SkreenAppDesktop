@@ -265,7 +265,17 @@ void GStreamerManager::acceptLoop() {
         int sndbuf = 65536;
         setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
-        // TCP puro: sin HTTP, mpv recibe MPEG-TS directamente
+        // Leer y descartar la petición HTTP del cliente
+        char req[2048] = {};
+        recv(client_fd, req, sizeof(req) - 1, 0);
+
+        const char* headers =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: video/mp2t\r\n"
+            "Connection: close\r\n"
+            "Cache-Control: no-cache\r\n"
+            "\r\n";
+        send(client_fd, headers, strlen(headers), MSG_NOSIGNAL);
 
         std::lock_guard<std::mutex> lock(clients_mutex_);
         client_fds_.push_back(client_fd);
