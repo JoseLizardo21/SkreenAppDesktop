@@ -93,7 +93,7 @@ bool GStreamerManager::createElements() {
         } else if (name == "x264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "tune", 0x00000004, "speed-preset", 1, "bitrate", 4000,
-                         "key-int-max", 30, "threads", 4, "bframes", 0,
+                         "key-int-max", 15, "threads", 4, "bframes", 0,
                          "byte-stream", TRUE, "aud", FALSE, NULL);
         } else if (name == "openh264enc") {
             g_object_set(G_OBJECT(encoder_),
@@ -111,7 +111,7 @@ bool GStreamerManager::createElements() {
         return false;
     }
 
-    // Queue: leaky para baja latencia
+    // Queue: leaky=2 (downstream) descarta frames viejos, mantiene el más reciente
     g_object_set(G_OBJECT(queue_main_),
                  "max-size-buffers", 1, "max-size-bytes", 0,
                  "max-size-time", 0, "leaky", 2, NULL);
@@ -119,8 +119,8 @@ bool GStreamerManager::createElements() {
     // h264parse: SPS/PPS antes de cada IDR
     g_object_set(G_OBJECT(h264parse_), "config-interval", -1, NULL);
 
-    // mpegtsmux: 1 TS packet por buffer para latencia mínima
-    g_object_set(G_OBJECT(mpegtsmux_), "alignment", 1, NULL);
+    // mpegtsmux: 7 TS packets por buffer (balance latencia/eficiencia)
+    g_object_set(G_OBJECT(mpegtsmux_), "alignment", 7, NULL);
 
     // appsink: sin sync, emit-signals para callback por cada buffer
     g_object_set(G_OBJECT(appsink_),
