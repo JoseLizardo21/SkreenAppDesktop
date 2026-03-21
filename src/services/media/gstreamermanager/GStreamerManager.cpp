@@ -83,7 +83,13 @@ bool GStreamerManager::createElements() {
 
         if (name == "vah264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000, "key-int-max", 30, "target-usage", 7, NULL);
+                         "bitrate", 4000,
+                         "key-int-max", 15,
+                         "target-usage", 7,
+                         "rate-control", 8,   // VCM: Video Conferencing Mode, baja latencia
+                         "ref-frames", 1,      // mínimas referencias = menor latencia encoder
+                         "b-frames", 0,
+                         NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", 4000, "keyframe-period", 30, "quality-level", 7, NULL);
@@ -261,8 +267,8 @@ void GStreamerManager::acceptLoop() {
         int flag = 1;
         setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
-        // Buffer de envío pequeño: reduce latencia (datos en tránsito = buffer/bitrate)
-        int sndbuf = 65536;
+        // Buffer suficiente para IDR frames del HW encoder sin corrupción
+        int sndbuf = 262144;
         setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
         // Leer y descartar la petición HTTP del cliente
@@ -294,16 +300,12 @@ void GStreamerManager::sendToClients(const uint8_t* data, gsize size) {
     std::vector<int> to_remove;
 
     for (int fd : client_fds_) {
-        ssize_t sent = send(fd, data, size, MSG_NOSIGNAL | MSG_DONTWAIT);
+        ssize_t sent = send(fd, data, size, MSG_NOSIGNAL);
         if (sent < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // Buffer lleno: descartar este paquete para no acumular latencia
-            } else {
-                std::cout << "📴 Cliente desconectado  fd=" << fd
-                          << "  error=" << strerror(errno) << "\n";
-                close(fd);
-                to_remove.push_back(fd);
-            }
+            std::cout << "📴 Cliente desconectado  fd=" << fd
+                      << "  error=" << strerror(errno) << "\n";
+            close(fd);
+            to_remove.push_back(fd);
         }
     }
 
