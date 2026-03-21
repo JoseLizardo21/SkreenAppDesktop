@@ -84,10 +84,11 @@ bool GStreamerManager::createElements() {
         if (name == "vah264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", 4000,
-                         "key-int-max", 15,
+                         "key-int-max", 5,     // IDR cada 167ms: recuperación rápida en scene changes
                          "target-usage", 7,
-                         "rate-control", 8,   // VCM: Video Conferencing Mode, baja latencia
-                         "ref-frames", 1,      // mínimas referencias = menor latencia encoder
+                         "rate-control", 8,    // VCM: Video Conferencing Mode
+                         "cpb-size", 500,      // max ~62KB por frame, evita bursts TCP
+                         "ref-frames", 1,
                          "b-frames", 0,
                          NULL);
         } else if (name == "vaapih264enc") {
