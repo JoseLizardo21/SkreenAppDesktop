@@ -69,8 +69,8 @@ bool GStreamerManager::createElements() {
         {"vah264enc",    "Intel/AMD H.264 VA-API"},
         {"vaapih264enc", "Intel/AMD H.264 VAAPI"},
         {"nvh264enc",    "NVIDIA H.264 NVENC"},
+        {"x264enc",      "H.264 x264 software (zerolatency)"},
         {"openh264enc",  "H.264 OpenH264 software"},
-        {"x264enc",      "H.264 x264 software"},
         {nullptr, nullptr}
     };
 
@@ -83,21 +83,21 @@ bool GStreamerManager::createElements() {
 
         if (name == "vah264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000, "key-int-max", 60, "target-usage", 7, NULL);
+                         "bitrate", 4000, "key-int-max", 30, "target-usage", 7, NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000, "keyframe-period", 60, "quality-level", 7, NULL);
+                         "bitrate", 4000, "keyframe-period", 30, "quality-level", 7, NULL);
         } else if (name == "nvh264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", 4000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);
-        } else if (name == "openh264enc") {
-            g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000000, "complexity", 0, "rate-control", 1, NULL);
-        } else {
+        } else if (name == "x264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "tune", 0x00000004, "speed-preset", 1, "bitrate", 4000,
-                         "key-int-max", 60, "threads", 4, "bframes", 0,
+                         "key-int-max", 30, "threads", 4, "bframes", 0,
                          "byte-stream", TRUE, "aud", FALSE, NULL);
+        } else if (name == "openh264enc") {
+            g_object_set(G_OBJECT(encoder_),
+                         "bitrate", 4000000, "complexity", 0, "rate-control", 0, NULL);
         }
     }
 
@@ -118,6 +118,9 @@ bool GStreamerManager::createElements() {
 
     // h264parse: SPS/PPS antes de cada IDR
     g_object_set(G_OBJECT(h264parse_), "config-interval", -1, NULL);
+
+    // mpegtsmux: 1 TS packet por buffer para latencia mínima
+    g_object_set(G_OBJECT(mpegtsmux_), "alignment", 1, NULL);
 
     // appsink: sin sync, emit-signals para callback por cada buffer
     g_object_set(G_OBJECT(appsink_),
