@@ -261,6 +261,10 @@ void GStreamerManager::acceptLoop() {
         int flag = 1;
         setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
+        // Buffer de envío pequeño: reduce latencia (datos en tránsito = buffer/bitrate)
+        int sndbuf = 65536;
+        setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+
         // Leer y descartar la petición HTTP del cliente
         char req[2048] = {};
         recv(client_fd, req, sizeof(req) - 1, 0);
@@ -291,15 +295,16 @@ void GStreamerManager::sendToClients(const uint8_t* data, gsize size) {
     std::vector<int> to_remove;
 
     for (int fd : client_fds_) {
-        ssize_t sent = send(fd, data, size, MSG_NOSIGNAL);
+        ssize_t sent = send(fd, data, size, MSG_NOSIGNAL | MSG_DONTWAIT);
         if (sent < 0) {
-            std::cout << "📴 Cliente desconectado  fd=" << fd
-                      << "  error=" << strerror(errno) << "\n";
-            close(fd);
-            to_remove.push_back(fd);
-        } else if ((gsize)sent < size) {
-            std::cerr << "⚠️  Envío parcial  fd=" << fd
-                      << "  enviado=" << sent << "/" << size << " bytes\n";
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // Buffer lleno: descartar este paquete para no acumular latencia
+            } else {
+                std::cout << "📴 Cliente desconectado  fd=" << fd
+                          << "  error=" << strerror(errno) << "\n";
+                close(fd);
+                to_remove.push_back(fd);
+            }
         }
     }
 
