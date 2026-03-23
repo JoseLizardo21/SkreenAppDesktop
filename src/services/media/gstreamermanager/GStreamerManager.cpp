@@ -1,4 +1,5 @@
 #include "GStreamerManager.h"
+#include <gst/video/video.h>
 #include <iostream>
 #include <cstring>
 #include <string>
@@ -337,6 +338,16 @@ GstFlowReturn GStreamerManager::onNewSample(GstElement* appsink, gpointer user_d
             std::printf("\n");
             std::cout << "   (H.264 Annex-B: primeros bytes deben ser 00 00 00 01)\n";
         }
+
+        auto now = std::chrono::steady_clock::now();
+        bool was_stalled = (now - self->last_frame_time_) >= kStallThreshold;
+        self->last_frame_time_ = now;
+
+        // Si el pipeline estuvo parado (PipeWire inactivo), forzar IDR inmediato
+        // para que el móvil reciba un frame limpio sin artefactos de referencia
+        if (was_stalled)
+            self->forceKeyframe();
+
         self->sendToClients(map.data, map.size);
         gst_buffer_unmap(buffer, &map);
     }
@@ -351,6 +362,7 @@ bool GStreamerManager::startCapture() {
     if (is_capturing_) return true;
     if (!pipeline_) { error("Pipeline not initialized"); return false; }
 
+    last_frame_time_ = std::chrono::steady_clock::now();
     startTcpServer();
 
     std::cout << "▶️ Starting pipeline...\n";
@@ -403,6 +415,19 @@ GstBusSyncReply GStreamerManager::onBusMessage(GstBus* bus, GstMessage* message,
             break;
     }
     return GST_BUS_PASS;
+}
+
+void GStreamerManager::forceKeyframe() {
+    if (!encoder_) return;
+    // Envía evento upstream al encoder para generar un IDR en el próximo frame
+    GstPad* sink_pad = gst_element_get_static_pad(encoder_, "sink");
+    if (sink_pad) {
+        GstEvent* event = gst_video_event_new_upstream_force_key_unit(
+            GST_CLOCK_TIME_NONE, TRUE, 0);
+        gst_pad_push_event(sink_pad, event);
+        gst_object_unref(sink_pad);
+        std::cout << "🔑 IDR forzado tras reanudación de stream\n";
+    }
 }
 
 void GStreamerManager::cleanup() {

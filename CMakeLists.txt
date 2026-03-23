@@ -14,6 +14,7 @@ pkg_check_modules(GTK REQUIRED gtk+-3.0)
 pkg_check_modules(GSTREAMER REQUIRED
     gstreamer-1.0
     gstreamer-app-1.0
+    gstreamer-video-1.0
 )
 pkg_check_modules(DBUS REQUIRED dbus-1)
 

@@ -10,6 +10,7 @@
 #include <mutex>
 #include <vector>
 #include <atomic>
+#include <chrono>
 
 class GStreamerManager {
 public:
@@ -60,6 +61,12 @@ private:
     void stopTcpServer();
     void acceptLoop();
     void sendToClients(const uint8_t* data, gsize size);
+
+    // Force-IDR al reanudar: detecta gaps en el stream y fuerza un keyframe limpio
+    std::chrono::steady_clock::time_point last_frame_time_;
+    static constexpr auto kStallThreshold = std::chrono::milliseconds(200);
+
+    void forceKeyframe();
 
     bool createElements();
     bool configurePipeWireSource();
