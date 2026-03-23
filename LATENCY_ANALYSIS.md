@@ -13,29 +13,6 @@ Cada etapa suma latencia. A 30fps ya tienes 33ms por frame de base.
 
 ## Fuentes de latencia (de mayor a menor impacto)
 
-### 1. MPV en el receptor — el mayor culpable
-
-En `SkreenAppMobile/lib/main.dart`:
-
-```dart
-// 64KB de buffer en el player
-bufferSize: 64 * 1024
-```
-
-Y las propiedades MPV:
-
-```
-demuxer-lavf-probesize: 262144      # MPV espera 256KB antes de empezar a decodificar
-demuxer-lavf-analyzeduration: 0.05  # 50ms de análisis
-demuxer-readahead-secs: 0.1         # 100ms de readahead
-stream-buffer-size: 4096            # buffer adicional
-```
-
-MPV está diseñado para **reproducción suave**, no para streaming de pantalla en tiempo real.
-Aunque tiene `video-latency-hacks: yes`, su arquitectura interna introduce buffers inevitables.
-El `probesize` de 256KB a 4Mbps significa que al inicio espera ~512ms solo para analizar el stream.
-
----
 
 ### 2. MPEG-TS muxer
 
