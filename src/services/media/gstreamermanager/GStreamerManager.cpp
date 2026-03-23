@@ -82,18 +82,18 @@ bool GStreamerManager::createElements() {
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", 10000,
                          "key-int-max", 5,     // IDR cada 167ms: recuperación rápida en scene changes
-                         "target-usage", 7,
-                         "rate-control", 8,    // VCM: Video Conferencing Mode
-                         "cpb-size", 1250,     // ~156KB por frame, proporcional al bitrate
+                         "target-usage", 4,    // balanceado: mejor calidad que 7 (fastest)
+                         "rate-control", 2,    // VBR: usa más bits en escenas complejas
+                         "cpb-size", 2000,     // permite bursts más grandes en cambios abruptos
                          "ref-frames", 1,
                          "b-frames", 0,
                          NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 7, NULL);
+                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 4, NULL);
         } else if (name == "nvh264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);
+                         "bitrate", 10000, "preset", 4, "rc-mode", 2, "zerolatency", TRUE, NULL);
         } else if (name == "x264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "tune", 0x00000004, "speed-preset", 1, "bitrate", 10000,
