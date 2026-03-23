@@ -1,6 +1,25 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(SkreenDesktop VERSION 1.0)
+project(SkreenDesktop VERSION 0.1.0)
+
+# Versión con git hash para builds de desarrollo (ej: v0.1.0-3-gabcd123)
+execute_process(
+  COMMAND git describe --tags --always --dirty
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+if(GIT_VERSION STREQUAL "")
+  set(APP_VERSION "${PROJECT_VERSION}")
+else()
+  set(APP_VERSION "${GIT_VERSION}")
+endif()
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/include/version.h.in
+  ${CMAKE_BINARY_DIR}/version.h
+)
 
 # Configurar estándar C++
 set(CMAKE_CXX_STANDARD 17)
@@ -25,6 +44,7 @@ find_package(Threads REQUIRED)
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}
     ${GTK_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
     ${DBUS_INCLUDE_DIRS}
