@@ -32,6 +32,8 @@ private:
     // Pipeline elements
     GstElement* pipeline_{nullptr};
     GstElement* pipewiresrc_{nullptr};
+    GstElement* videorate_{nullptr};
+    GstElement* capsfilter_rate_{nullptr};
     GstElement* queue_main_{nullptr};
     GstElement* videoconvert_{nullptr};
     GstElement* encoder_{nullptr};
@@ -60,9 +62,15 @@ private:
 
     // Force-IDR al reanudar: detecta gaps en el stream y fuerza un keyframe limpio
     std::chrono::steady_clock::time_point last_frame_time_;
-    static constexpr auto kStallThreshold = std::chrono::milliseconds(200);
+    static constexpr auto kStallThreshold = std::chrono::milliseconds(66); // 2 frames a 30fps
 
     void forceKeyframe();
+
+    // Watchdog: cuando Wayland no envía frames (ventana idle), fuerza un RECONFIGURE
+    // en pipewiresrc para que el compositor entregue el estado actual de pantalla
+    std::thread watchdog_thread_;
+    std::atomic<bool> watchdog_running_{false};
+    void watchdogLoop();
 
     bool createElements();
     bool configurePipeWireSource();
