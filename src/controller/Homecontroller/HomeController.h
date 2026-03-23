@@ -2,8 +2,10 @@
 #define HOMECONTROLLER_H
 
 #include <memory>
+#include <atomic>
 #include "../../services/system/portalmanager/PortalManager.h"
 #include "../../services/media/gstreamermanager/GStreamerManager.h"
+#include "../../services/input/InputServer.h"
 
 class Home;
 
@@ -19,6 +21,7 @@ private:
     Home* view_;
     std::unique_ptr<PortalManager> portal_manager_;
     std::unique_ptr<GStreamerManager> gstreamer_manager_;
+    std::unique_ptr<InputServer> input_server_;
 };
 
 #endif

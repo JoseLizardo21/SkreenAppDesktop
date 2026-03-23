@@ -28,6 +28,9 @@ public:
     void stopCapture();
     bool isCapturing() const { return is_capturing_; }
 
+    int getStreamWidth() const { return stream_w_; }
+    int getStreamHeight() const { return stream_h_; }
+
 private:
     // Pipeline elements
     GstElement* pipeline_{nullptr};
@@ -41,6 +44,10 @@ private:
     bool is_capturing_{false};
     int fd_{-1};
     uint32_t node_id_{0};
+
+    int stream_w_{1920};
+    int stream_h_{1080};
+    bool stream_size_known_{false};
 
     ErrorCallback error_callback_;
 

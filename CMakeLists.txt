@@ -74,6 +74,7 @@ target_link_libraries(skreen_desktop
     gstreamer_manager
     home_controller
     portal_manager
+    input_server
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
     ${DBUS_LIBRARIES}

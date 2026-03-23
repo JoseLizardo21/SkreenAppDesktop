@@ -302,6 +302,23 @@ GstFlowReturn GStreamerManager::onNewSample(GstElement* appsink, gpointer user_d
     GstSample* sample = gst_app_sink_pull_sample(GST_APP_SINK(appsink));
     if (!sample) return GST_FLOW_OK;
 
+    // Read stream dimensions from caps (only once)
+    if (!self->stream_size_known_) {
+        GstCaps* caps = gst_sample_get_caps(sample);
+        if (caps) {
+            GstStructure* s = gst_caps_get_structure(caps, 0);
+            int w = 0, h = 0;
+            gst_structure_get_int(s, "width", &w);
+            gst_structure_get_int(s, "height", &h);
+            if (w > 0 && h > 0) {
+                self->stream_w_ = w;
+                self->stream_h_ = h;
+                self->stream_size_known_ = true;
+                std::cout << "Stream size: " << w << "x" << h << "\n";
+            }
+        }
+    }
+
     GstBuffer* buffer = gst_sample_get_buffer(sample);
     GstMapInfo map;
     if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {

@@ -5,6 +5,7 @@
 #include <functional>
 #include <atomic>
 #include <thread>
+#include <mutex>
 #include <dbus/dbus.h>
 #include <cstdint>
 
@@ -29,6 +30,8 @@ public:
      */
     using PortalCallback = std::function<void(const std::string&, uint32_t, int)>;
     using ErrorCallback = std::function<void(const std::string&)>;
+
+    enum class State { IDLE, SESSION_CREATED, DEVICES_SELECTED, SOURCES_SELECTED };
 
     PortalManager();
     ~PortalManager();
@@ -74,6 +77,12 @@ public:
      */
     int getPipeWireFD() const { return pipewire_fd_; }
 
+    /**
+     * Inject pointer events via RemoteDesktop portal
+     */
+    void notifyPointerMotionAbsolute(double x, double y);
+    void notifyPointerButton(int32_t button, uint32_t state);
+
 private:
     // Portal state
     std::string session_handle_;
@@ -96,6 +105,7 @@ private:
 
     // Portal workflow
     void createSession();
+    void selectDevices();
     void selectSources();
     void startCapture();
     void openPipeWireRemote();
@@ -108,6 +118,12 @@ private:
 
     // Portal signal handler (static, called from DBus filter)
     static DBusHandlerResult onPortalSignal(DBusConnection* conn, DBusMessage* msg, void* user_data);
+
+    // State machine
+    State state_{State::IDLE};
+
+    // Mutex for send operations
+    std::mutex send_mutex_;
 
     // Helper methods
     void sendDBusMessage(DBusMessage* msg);

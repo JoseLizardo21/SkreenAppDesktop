@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 #include <cstring>
+#include <mutex>
 
 PortalManager::PortalManager() = default;
 
@@ -34,6 +35,7 @@ void PortalManager::startAsync() {
     request_token_.clear();
     pipewire_node_id_ = 0;
     pipewire_fd_ = -1;
+    state_ = State::IDLE;
 
     is_running_ = true;
 
@@ -82,7 +84,7 @@ void PortalManager::startAsync() {
 
         // Keep connection alive listening for signals
         while (is_running_) {
-            dbus_connection_read_write_dispatch(connection_, 100);
+            dbus_connection_read_write_dispatch(connection_, 5);
         }
 
         dbus_connection_unref(connection_);
@@ -99,7 +101,7 @@ void PortalManager::createSession() {
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
-        "org.freedesktop.portal.ScreenCast",
+        "org.freedesktop.portal.RemoteDesktop",
         "CreateSession"
     );
 
@@ -146,6 +148,66 @@ void PortalManager::createSession() {
 
     sendDBusMessage(msg);
     std::cout << "CreateSession sent\n";
+}
+
+void PortalManager::selectDevices() {
+    if (session_handle_.empty()) {
+        error("Cannot select devices: no session handle");
+        return;
+    }
+
+    // Update request token
+    request_token_ = "request" + std::to_string(++request_counter_) + "_" +
+                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+
+    DBusMessage* msg = dbus_message_new_method_call(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.RemoteDesktop",
+        "SelectDevices"
+    );
+
+    if (!msg) {
+        error("Failed to create DBus message for SelectDevices");
+        return;
+    }
+
+    DBusMessageIter args;
+    dbus_message_iter_init_append(msg, &args);
+
+    const char* session_path = session_handle_.c_str();
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &session_path);
+
+    // Options
+    DBusMessageIter dict;
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
+
+    // Add handle_token
+    DBusMessageIter entry;
+    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+    const char* handle_key = "handle_token";
+    dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &handle_key);
+    DBusMessageIter variant;
+    dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "s", &variant);
+    const char* req_token = request_token_.c_str();
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_STRING, &req_token);
+    dbus_message_iter_close_container(&entry, &variant);
+    dbus_message_iter_close_container(&dict, &entry);
+
+    // Add types option: 6 = pointer (2) + touch (4)
+    dbus_message_iter_open_container(&dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+    const char* types_key = "types";
+    dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &types_key);
+    dbus_message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "u", &variant);
+    uint32_t types = 6;
+    dbus_message_iter_append_basic(&variant, DBUS_TYPE_UINT32, &types);
+    dbus_message_iter_close_container(&entry, &variant);
+    dbus_message_iter_close_container(&dict, &entry);
+
+    dbus_message_iter_close_container(&args, &dict);
+
+    sendDBusMessage(msg);
+    std::cout << "SelectDevices sent\n";
 }
 
 void PortalManager::selectSources() {
@@ -228,7 +290,7 @@ void PortalManager::startCapture() {
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
-        "org.freedesktop.portal.ScreenCast",
+        "org.freedesktop.portal.RemoteDesktop",
         "Start"
     );
 
@@ -488,14 +550,66 @@ void PortalManager::processSignal(DBusMessage* msg) {
     }
 
     // State machine for portal workflow
-    if (!session_handle_found.empty() && session_handle_.empty()) {
+    if (!session_handle_found.empty() && state_ == State::IDLE) {
         session_handle_ = session_handle_found;
+        state_ = State::SESSION_CREATED;
+        selectDevices();
+    } else if (session_handle_found.empty() && !has_streams && state_ == State::SESSION_CREATED) {
+        state_ = State::DEVICES_SELECTED;
         selectSources();
-    } else if (!session_handle_.empty() && !has_streams) {
+    } else if (session_handle_found.empty() && !has_streams && state_ == State::DEVICES_SELECTED) {
+        state_ = State::SOURCES_SELECTED;
         startCapture();
     } else if (has_streams) {
         openPipeWireRemote();
     }
+}
+
+void PortalManager::notifyPointerMotionAbsolute(double x, double y) {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (!connection_ || session_handle_.empty()) return;
+    DBusMessage* msg = dbus_message_new_method_call(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.RemoteDesktop",
+        "NotifyPointerMotionAbsolute"
+    );
+    if (!msg) return;
+    DBusMessageIter args;
+    dbus_message_iter_init_append(msg, &args);
+    const char* sp = session_handle_.c_str();
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &sp);
+    DBusMessageIter dict;
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
+    dbus_message_iter_close_container(&args, &dict);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_UINT32, &pipewire_node_id_);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_DOUBLE, &x);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_DOUBLE, &y);
+    dbus_connection_send(connection_, msg, nullptr);
+    dbus_message_unref(msg);
+}
+
+void PortalManager::notifyPointerButton(int32_t button, uint32_t state) {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (!connection_ || session_handle_.empty()) return;
+    DBusMessage* msg = dbus_message_new_method_call(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.RemoteDesktop",
+        "NotifyPointerButton"
+    );
+    if (!msg) return;
+    DBusMessageIter args;
+    dbus_message_iter_init_append(msg, &args);
+    const char* sp = session_handle_.c_str();
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &sp);
+    DBusMessageIter dict;
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
+    dbus_message_iter_close_container(&args, &dict);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &button);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_UINT32, &state);
+    dbus_connection_send(connection_, msg, nullptr);
+    dbus_message_unref(msg);
 }
 
 void PortalManager::sendDBusMessage(DBusMessage* msg) {

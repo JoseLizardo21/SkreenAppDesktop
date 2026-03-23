@@ -64,9 +64,30 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         return;
     }
 
+    input_server_ = std::make_unique<InputServer>();
+    auto* pm = portal_manager_.get();
+    auto* gm = gstreamer_manager_.get();
+
+    input_server_->start([pm, gm](uint8_t type, int32_t, float nx, float ny) {
+        int w = gm->getStreamWidth();
+        int h = gm->getStreamHeight();
+        double ax = nx * w;
+        double ay = ny * h;
+        if (type == 1) {
+            // Atomic click: DOWN+UP in the same callback so the button never gets stuck
+            pm->notifyPointerMotionAbsolute(ax, ay);
+            pm->notifyPointerButton(272, 1);
+            pm->notifyPointerButton(272, 0);
+        } else if (type == 0) {
+            pm->notifyPointerMotionAbsolute(ax, ay);
+        }
+        // type==2 ignored: button already released atomically on type==1
+    });
+
     if (view_) view_->setTransmitting(true);
-    std::cout << "📡 Streaming TCP en puerto 9003\n";
-    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002\n";
+    std::cout << "Streaming TCP en puerto 9002\n";
+    std::cout << "Input control TCP en puerto 9003\n";
+    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003\n";
 }
 
 void HomeController::onGStreamerError(const std::string& error) {
@@ -79,6 +100,11 @@ void HomeController::handleStopCapture() {
     closeFirewallPort();
 
     if (view_) view_->setTransmitting(false);
+
+    if (input_server_) {
+        input_server_->stop();
+        input_server_.reset();
+    }
 
     if (gstreamer_manager_) {
         gstreamer_manager_->stopCapture();
