@@ -32,11 +32,7 @@ private:
     // Pipeline elements
     GstElement* pipeline_{nullptr};
     GstElement* pipewiresrc_{nullptr};
-    GstElement* videorate_{nullptr};
-    GstElement* capsfilter_rate_{nullptr};
     GstElement* queue_main_{nullptr};
-    GstElement* videoscale_{nullptr};
-    GstElement* capsfilter_scale_{nullptr};
     GstElement* videoconvert_{nullptr};
     GstElement* encoder_{nullptr};
     GstElement* h264parse_{nullptr};
@@ -70,7 +66,6 @@ private:
 
     bool createElements();
     bool configurePipeWireSource();
-    bool configureFilters();
     bool linkElements();
     bool setupBusHandler();
 

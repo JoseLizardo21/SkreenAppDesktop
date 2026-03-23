@@ -39,7 +39,6 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id) {
 
     if (!createElements() ||
         !configurePipeWireSource() ||
-        !configureFilters() ||
         !linkElements() ||
         !setupBusHandler()) {
         cleanup();
@@ -53,13 +52,9 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id) {
 bool GStreamerManager::createElements() {
     std::cout << "  Creating elements...\n";
 
-    pipewiresrc_     = gst_element_factory_make("pipewiresrc",  "source");
-    videorate_       = gst_element_factory_make("videorate",    "rate");
-    capsfilter_rate_ = gst_element_factory_make("capsfilter",   "filter_rate");
-    queue_main_      = gst_element_factory_make("queue",        "queue_main");
-    videoscale_      = gst_element_factory_make("videoscale",   "scale");
-    capsfilter_scale_= gst_element_factory_make("capsfilter",   "filter_scale");
-    videoconvert_    = gst_element_factory_make("videoconvert", "convert");
+    pipewiresrc_  = gst_element_factory_make("pipewiresrc",  "source");
+    queue_main_   = gst_element_factory_make("queue",        "queue_main");
+    videoconvert_ = gst_element_factory_make("videoconvert", "convert");
     h264parse_       = gst_element_factory_make("h264parse",    "parser");
     appsink_         = gst_element_factory_make("appsink",      "sink");
 
@@ -83,33 +78,32 @@ bool GStreamerManager::createElements() {
 
         if (name == "vah264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000,
+                         "bitrate", 10000,
                          "key-int-max", 5,     // IDR cada 167ms: recuperación rápida en scene changes
                          "target-usage", 7,
                          "rate-control", 8,    // VCM: Video Conferencing Mode
-                         "cpb-size", 500,      // max ~62KB por frame, evita bursts TCP
+                         "cpb-size", 1250,     // ~156KB por frame, proporcional al bitrate
                          "ref-frames", 1,
                          "b-frames", 0,
                          NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000, "keyframe-period", 30, "quality-level", 7, NULL);
+                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 7, NULL);
         } else if (name == "nvh264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);
+                         "bitrate", 10000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);
         } else if (name == "x264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "tune", 0x00000004, "speed-preset", 1, "bitrate", 4000,
+                         "tune", 0x00000004, "speed-preset", 1, "bitrate", 10000,
                          "key-int-max", 15, "threads", 4, "bframes", 0,
                          "byte-stream", TRUE, "aud", FALSE, NULL);
         } else if (name == "openh264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 4000000, "complexity", 0, "rate-control", 0, NULL);
+                         "bitrate", 10000000, "complexity", 0, "rate-control", 0, NULL);
         }
     }
 
-    if (!pipewiresrc_ || !videorate_ || !capsfilter_rate_ || !queue_main_ ||
-        !videoscale_ || !capsfilter_scale_ || !videoconvert_ ||
+    if (!pipewiresrc_ || !queue_main_ || !videoconvert_ ||
         !encoder_ || !h264parse_ || !appsink_) {
         error("Failed to create one or more elements");
         if (!encoder_) std::cerr << "  ❌ No H.264 encoder available\n";
@@ -139,30 +133,20 @@ bool GStreamerManager::createElements() {
 }
 
 bool GStreamerManager::configurePipeWireSource() {
+    GstCaps* caps = gst_caps_new_simple("video/x-raw",
+                                        "framerate", GST_TYPE_FRACTION, 30, 1,
+                                        NULL);
     g_object_set(G_OBJECT(pipewiresrc_),
-                 "fd", fd_,
+                 "fd",   fd_,
                  "path", g_strdup_printf("%u", node_id_),
+                 "caps", caps,
                  NULL);
-    std::cout << "  ✓ PipeWire configured (fd=" << fd_ << ", node_id=" << node_id_ << ")\n";
+    gst_caps_unref(caps);
+    std::cout << "  ✓ PipeWire configured (fd=" << fd_ << ", node_id=" << node_id_
+              << ", caps=native@30fps)\n";
     return true;
 }
 
-bool GStreamerManager::configureFilters() {
-    g_object_set(G_OBJECT(videorate_), "drop-only", TRUE, NULL);
-    GstCaps* caps_rate = gst_caps_new_simple("video/x-raw",
-                                             "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
-    g_object_set(G_OBJECT(capsfilter_rate_), "caps", caps_rate, NULL);
-    gst_caps_unref(caps_rate);
-
-    GstCaps* caps_scale = gst_caps_new_simple("video/x-raw",
-                                              "width",  G_TYPE_INT, 1280,
-                                              "height", G_TYPE_INT, 720, NULL);
-    g_object_set(G_OBJECT(capsfilter_scale_), "caps", caps_scale, NULL);
-    gst_caps_unref(caps_scale);
-
-    std::cout << "  ✓ Filters configured (30fps, 1280x720)\n";
-    return true;
-}
 
 bool GStreamerManager::linkElements() {
     std::cout << "  Linking pipeline...\n";
@@ -170,13 +154,11 @@ bool GStreamerManager::linkElements() {
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
     gst_bin_add_many(GST_BIN(pipeline_),
-                     pipewiresrc_, videorate_, capsfilter_rate_, queue_main_,
-                     videoscale_, capsfilter_scale_, videoconvert_,
+                     pipewiresrc_, queue_main_, videoconvert_,
                      encoder_, h264parse_, appsink_,
                      NULL);
 
-    if (!gst_element_link_many(pipewiresrc_, videorate_, capsfilter_rate_, queue_main_,
-                               videoscale_, capsfilter_scale_, videoconvert_,
+    if (!gst_element_link_many(pipewiresrc_, queue_main_, videoconvert_,
                                encoder_, h264parse_, appsink_,
                                NULL)) {
         error("Failed to link pipeline elements");
@@ -434,8 +416,7 @@ void GStreamerManager::cleanup() {
     if (pipeline_) {
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
-        pipewiresrc_ = videorate_ = capsfilter_rate_ = queue_main_ = nullptr;
-        videoscale_ = capsfilter_scale_ = videoconvert_ = nullptr;
+        pipewiresrc_ = queue_main_ = videoconvert_ = nullptr;
         encoder_ = h264parse_ = appsink_ = nullptr;
     }
 }

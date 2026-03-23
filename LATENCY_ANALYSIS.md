@@ -3,8 +3,8 @@
 ## Pipeline completo
 
 ```
-Pantalla → PipeWire → GStreamer (10 elementos) → H.264 encode →
-h264parse → appsink → TCP raw (prefijo 4 bytes) → decode → pantalla
+Pantalla → PipeWire (resolución nativa @30fps) → GStreamer (6 elementos) →
+H.264 encode → h264parse → appsink → TCP raw (prefijo 4 bytes) → decode → pantalla
 ```
 
 Cada etapa suma latencia. A 30fps ya tienes 33ms por frame de base.
@@ -14,25 +14,12 @@ Cada etapa suma latencia. A 30fps ya tienes 33ms por frame de base.
 ## Fuentes de latencia (de mayor a menor impacto)
 
 
-### 1. Pipeline GStreamer — 10 elementos en serie
-
-```
-pipewiresrc → videorate → capsfilter → queue → videoscale →
-capsfilter → videoconvert → encoder → h264parse → appsink
-```
-
-Cada elemento procesa en su propio hilo y pasa buffers entre sí. Aunque `queue_main` tiene
-`max-size-buffers=1` y `leaky=2` (descarta frames viejos), la **cadena de procesamiento**
-agrega ~5–15ms.
-
----
-
-### 2. H.264 encoding
+### 1. H.264 encoding
 
 Incluso con hardware acceleration (`vah264enc`, `target-usage=7`) y `key-int-max=5`:
 
 - Hardware encode: ~10–20ms
-- El `cpb-size=500` limita bursts pero no elimina el tiempo de codificación
+- El `cpb-size=1250` limita bursts pero no elimina el tiempo de codificación
 
 ---
 
@@ -41,7 +28,7 @@ Incluso con hardware acceleration (`vah264enc`, `target-usage=7`) y `key-int-max
 | Etapa | Latencia estimada |
 |-------|-------------------|
 | Captura PipeWire → GStreamer | 8–16ms |
-| Pipeline GStreamer (10 elementos) | 5–15ms |
+| Pipeline GStreamer (6 elementos) | 2–8ms |
 | H.264 encoding (hardware) | 10–20ms |
 | h264parse (SPS/PPS inline) + appsink | 0.5–2ms |
 | TCP raw (prefijo 4B) / USB cable | <1ms |
