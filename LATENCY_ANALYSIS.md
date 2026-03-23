@@ -3,8 +3,8 @@
 ## Pipeline completo
 
 ```
-Pantalla → PipeWire → GStreamer (7 elementos) → H.264 encode →
-MPEG-TS mux → appsink → TCP/HTTP → MPV demux → decode → pantalla
+Pantalla → PipeWire → GStreamer (10 elementos) → H.264 encode →
+h264parse → appsink → TCP raw (prefijo 4 bytes) → decode → pantalla
 ```
 
 Cada etapa suma latencia. A 30fps ya tienes 33ms por frame de base.
@@ -14,17 +14,31 @@ Cada etapa suma latencia. A 30fps ya tienes 33ms por frame de base.
 ## Fuentes de latencia (de mayor a menor impacto)
 
 
-### 2. MPEG-TS muxer
+### 2. h264parse + TCP raw con prefijo de longitud
 
-En `GStreamerManager.cpp` (~línea 130):
+El MPEG-TS muxer fue eliminado. El pipeline ahora usa `h264parse → appsink → TCP raw`.
+
+En `GStreamerManager.cpp` (~línea 126):
 
 ```cpp
-g_object_set(G_OBJECT(mpegtsmux_), "alignment", 7, NULL);
+g_object_set(G_OBJECT(h264parse_), "config-interval", -1, NULL);
 ```
 
-`alignment=7` agrupa **7 paquetes TS** antes de enviar. Cada paquete TS mide 188 bytes →
-7×188 = 1316 bytes por envío. A 4Mbps eso es ~2.6ms de espera acumulada por buffer.
-Además, MPEG-TS añade overhead de encapsulación que el receptor tiene que desmultiplexar.
+`config-interval=-1` inserta SPS/PPS inline antes de cada IDR (formato Annex-B), lo que
+permite al receptor decodificar desde cualquier IDR sin estado previo. Agrega ~0.5–1ms
+solo en frames IDR (cada ~167ms con `key-int-max=5`).
+
+El transporte TCP envía cada frame H.264 con un prefijo de 4 bytes big-endian:
+
+```cpp
+uint8_t len_prefix[4] = { (size>>24)&0xFF, (size>>16)&0xFF,
+                           (size>>8)&0xFF,   size&0xFF };
+send(fd, len_prefix, 4, MSG_NOSIGNAL);
+send(fd, data, size, MSG_NOSIGNAL);
+```
+
+`TCP_NODELAY` activo elimina el algoritmo de Nagle. Sin buffering de múltiples paquetes
+(vs. `alignment=7` del muxer anterior). **Latencia estimada: ~0.5–2ms** (antes: 3–8ms).
 
 ---
 
@@ -32,7 +46,7 @@ Además, MPEG-TS añade overhead de encapsulación que el receptor tiene que des
 
 ```
 pipewiresrc → videorate → capsfilter → queue → videoscale →
-capsfilter → videoconvert → encoder → h264parse → mpegtsmux → appsink
+capsfilter → videoconvert → encoder → h264parse → appsink
 ```
 
 Cada elemento procesa en su propio hilo y pasa buffers entre sí. Aunque `queue_main` tiene
@@ -65,13 +79,11 @@ tarda en establecer el stream.
 | Captura PipeWire → GStreamer | 8–16ms |
 | Pipeline GStreamer (7 elementos) | 5–15ms |
 | H.264 encoding (hardware) | 10–20ms |
-| MPEG-TS mux + appsink | 3–8ms |
-| TCP/USB cable | <1ms |
-| MPV probesize + analyzeduration | 50–500ms (inicio) / 50ms continuo |
-| MPV readahead buffer | 100ms |
+| h264parse (SPS/PPS inline) + appsink | 0.5–2ms |
+| TCP raw (prefijo 4B) / USB cable | <1ms |
 | H.264 decode | 5–15ms |
 | Display (frame timing) | 0–33ms |
-| **Total estimado** | **~200–750ms** |
+| **Total estimado** | **~50–200ms** |
 
 ---
 
