@@ -32,8 +32,6 @@ private:
     // Pipeline elements
     GstElement* pipeline_{nullptr};
     GstElement* pipewiresrc_{nullptr};
-    GstElement* videorate_{nullptr};
-    GstElement* capsfilter_rate_{nullptr};
     GstElement* queue_main_{nullptr};
     GstElement* videoconvert_{nullptr};
     GstElement* encoder_{nullptr};

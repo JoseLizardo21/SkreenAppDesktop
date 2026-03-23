@@ -52,11 +52,9 @@ bool GStreamerManager::initializePipeline(int fd, uint32_t node_id) {
 bool GStreamerManager::createElements() {
     std::cout << "  Creating elements...\n";
 
-    pipewiresrc_      = gst_element_factory_make("pipewiresrc",  "source");
-    videorate_        = gst_element_factory_make("videorate",    "rate");
-    capsfilter_rate_  = gst_element_factory_make("capsfilter",   "filter_rate");
-    queue_main_       = gst_element_factory_make("queue",        "queue_main");
-    videoconvert_     = gst_element_factory_make("videoconvert", "convert");
+    pipewiresrc_  = gst_element_factory_make("pipewiresrc",  "source");
+    queue_main_   = gst_element_factory_make("queue",        "queue_main");
+    videoconvert_ = gst_element_factory_make("videoconvert", "convert");
     h264parse_       = gst_element_factory_make("h264parse",    "parser");
     appsink_         = gst_element_factory_make("appsink",      "sink");
 
@@ -82,18 +80,18 @@ bool GStreamerManager::createElements() {
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", 10000,
                          "key-int-max", 5,     // IDR cada 167ms: recuperación rápida en scene changes
-                         "target-usage", 4,    // balanceado: mejor calidad que 7 (fastest)
-                         "rate-control", 2,    // VBR: usa más bits en escenas complejas
-                         "cpb-size", 2000,     // permite bursts más grandes en cambios abruptos
+                         "target-usage", 7,    // máxima velocidad de encoding
+                         "rate-control", 8,    // VCM: Video Conferencing Mode, optimizado para baja latencia
+                         "cpb-size", 1250,
                          "ref-frames", 1,
                          "b-frames", 0,
                          NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 4, NULL);
+                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 7, NULL);
         } else if (name == "nvh264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "preset", 4, "rc-mode", 2, "zerolatency", TRUE, NULL);
+                         "bitrate", 10000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);
         } else if (name == "x264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "tune", 0x00000004, "speed-preset", 1, "bitrate", 10000,
@@ -105,19 +103,7 @@ bool GStreamerManager::createElements() {
         }
     }
 
-    // videorate sin drop-only: duplica el último frame cuando PipeWire está idle,
-    // manteniendo el pipeline activo mientras Wayland no envía nuevos frames
-    g_object_set(G_OBJECT(videorate_),
-                 "max-duplication-time", (guint64)1000000000ULL, // máx 1s de frames duplicados
-                 NULL);
-
-    // capsfilter_rate_: fuerza la negociación de caps a 30fps con pipewiresrc
-    GstCaps* caps_rate = gst_caps_new_simple("video/x-raw",
-                                             "framerate", GST_TYPE_FRACTION, 30, 1, NULL);
-    g_object_set(G_OBJECT(capsfilter_rate_), "caps", caps_rate, NULL);
-    gst_caps_unref(caps_rate);
-
-    if (!pipewiresrc_ || !videorate_ || !capsfilter_rate_ || !queue_main_ || !videoconvert_ ||
+    if (!pipewiresrc_ || !queue_main_ || !videoconvert_ ||
         !encoder_ || !h264parse_ || !appsink_) {
         error("Failed to create one or more elements");
         if (!encoder_) std::cerr << "  ❌ No H.264 encoder available\n";
@@ -162,11 +148,11 @@ bool GStreamerManager::linkElements() {
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
     gst_bin_add_many(GST_BIN(pipeline_),
-                     pipewiresrc_, videorate_, capsfilter_rate_, queue_main_, videoconvert_,
+                     pipewiresrc_, queue_main_, videoconvert_,
                      encoder_, h264parse_, appsink_,
                      NULL);
 
-    if (!gst_element_link_many(pipewiresrc_, videorate_, capsfilter_rate_, queue_main_, videoconvert_,
+    if (!gst_element_link_many(pipewiresrc_, queue_main_, videoconvert_,
                                encoder_, h264parse_, appsink_,
                                NULL)) {
         error("Failed to link pipeline elements");
@@ -454,7 +440,7 @@ void GStreamerManager::cleanup() {
     if (pipeline_) {
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
-        pipewiresrc_ = videorate_ = capsfilter_rate_ = queue_main_ = videoconvert_ = nullptr;
+        pipewiresrc_ = queue_main_ = videoconvert_ = nullptr;
         encoder_ = h264parse_ = appsink_ = nullptr;
     }
 }
