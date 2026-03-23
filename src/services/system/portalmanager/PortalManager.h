@@ -82,6 +82,7 @@ public:
      */
     void notifyPointerMotionAbsolute(double x, double y);
     void notifyPointerButton(int32_t button, uint32_t state);
+    void notifyPointerAxis(double dx, double dy);
 
 private:
     // Portal state

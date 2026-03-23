@@ -612,6 +612,29 @@ void PortalManager::notifyPointerButton(int32_t button, uint32_t state) {
     dbus_message_unref(msg);
 }
 
+void PortalManager::notifyPointerAxis(double dx, double dy) {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (!connection_ || session_handle_.empty()) return;
+    DBusMessage* msg = dbus_message_new_method_call(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.RemoteDesktop",
+        "NotifyPointerAxis"
+    );
+    if (!msg) return;
+    DBusMessageIter args;
+    dbus_message_iter_init_append(msg, &args);
+    const char* sp = session_handle_.c_str();
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &sp);
+    DBusMessageIter dict;
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
+    dbus_message_iter_close_container(&args, &dict);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_DOUBLE, &dx);
+    dbus_message_iter_append_basic(&args, DBUS_TYPE_DOUBLE, &dy);
+    dbus_connection_send(connection_, msg, nullptr);
+    dbus_message_unref(msg);
+}
+
 void PortalManager::sendDBusMessage(DBusMessage* msg) {
     if (!connection_) {
         error("No DBus connection available");

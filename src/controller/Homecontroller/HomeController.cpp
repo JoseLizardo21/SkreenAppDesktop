@@ -68,20 +68,44 @@ void HomeController::onPortalComplete(const std::string& session_handle,
     auto* pm = portal_manager_.get();
     auto* gm = gstreamer_manager_.get();
 
-    input_server_->start([pm, gm](uint8_t type, int32_t, float nx, float ny) {
+    // Touch state: 0=idle, 1=down(potential tap), 2=dragging
+    struct TouchCtx { int state{0}; float sx{}, sy{}; };
+    auto ctx = std::make_shared<TouchCtx>();
+
+    input_server_->start([pm, gm, ctx](uint8_t type, int32_t, float nx, float ny) {
         int w = gm->getStreamWidth();
         int h = gm->getStreamHeight();
         double ax = nx * w;
         double ay = ny * h;
-        if (type == 1) {
-            // Atomic click: DOWN+UP in the same callback so the button never gets stuck
+
+        if (type == 1) {                          // touch down
+            ctx->state = 1;
+            ctx->sx = nx; ctx->sy = ny;
             pm->notifyPointerMotionAbsolute(ax, ay);
-            pm->notifyPointerButton(272, 1);
-            pm->notifyPointerButton(272, 0);
-        } else if (type == 0) {
+
+        } else if (type == 0) {                   // move (1 finger)
             pm->notifyPointerMotionAbsolute(ax, ay);
+            if (ctx->state == 1) {
+                float dx = nx - ctx->sx, dy = ny - ctx->sy;
+                if (dx*dx + dy*dy > 0.0001f) {   // ~1% of screen = drag threshold
+                    ctx->state = 2;
+                    pm->notifyPointerButton(272, 1); // button down: start drag
+                }
+            }
+
+        } else if (type == 2) {                   // touch up
+            if (ctx->state == 1) {
+                pm->notifyPointerButton(272, 1);  // tap: atomic click
+                pm->notifyPointerButton(272, 0);
+            } else if (ctx->state == 2) {
+                pm->notifyPointerButton(272, 0);  // end drag
+            }
+            ctx->state = 0;
+
+        } else if (type == 3) {                   // 2-finger scroll (ny = normalized delta)
+            double scroll = ny * 500.0;           // scale: full swipe ≈ 500px scroll
+            pm->notifyPointerAxis(0.0, scroll);
         }
-        // type==2 ignored: button already released atomically on type==1
     });
 
     if (view_) view_->setTransmitting(true);
