@@ -85,10 +85,12 @@ bool GStreamerManager::createElements() {
                          "cpb-size", 1250,     // ~156KB por frame, proporcional al bitrate
                          "ref-frames", 1,
                          "b-frames", 0,
+                         "low-latency", TRUE,  // reduce buffering interno del encoder GPU
                          NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 7, NULL);
+                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 7,
+                         "low-latency", TRUE, NULL);
         } else if (name == "nvh264enc") {
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", 10000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);

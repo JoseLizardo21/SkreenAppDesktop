@@ -11,36 +11,23 @@ Cada etapa suma latencia. A 30fps ya tienes 33ms por frame de base.
 
 ---
 
-## Fuentes de latencia (de mayor a menor impacto)
-
-
-### 1. H.264 encoding
-
-Incluso con hardware acceleration (`vah264enc`, `target-usage=7`) y `key-int-max=5`:
-
-- Hardware encode: ~10–20ms
-- El `cpb-size=1250` limita bursts pero no elimina el tiempo de codificación
-
----
-
 ## Resumen de latencias estimadas
 
 | Etapa | Latencia estimada |
 |-------|-------------------|
 | Captura PipeWire → GStreamer | 8–16ms |
 | Pipeline GStreamer (6 elementos) | 2–8ms |
-| H.264 encoding (hardware) | 10–20ms |
+| H.264 encoding (hardware, low-latency) | 5–10ms |
 | h264parse (SPS/PPS inline) + appsink | 0.5–2ms |
 | TCP raw (prefijo 4B) / USB cable | <1ms |
 | H.264 decode | 5–15ms |
 | Display (frame timing) | 0–33ms |
-| **Total estimado** | **~50–200ms** |
+| **Total estimado** | **~25–100ms** |
 
 ---
 
-## Por qué es estructuralmente difícil de resolver
+## Latencia residual
 
-Las fuentes de latencia restantes (pipeline GStreamer y encoding H.264) son inherentes al
-stack de captura y compresión de video. Reducir el encoding a <5ms requeriría un codec
-diseñado para screen mirroring (como el modo de baja latencia de VP8/VP9 en WebRTC) o
-transmisión de frames sin comprimir, lo cual no es viable a 4Mbps por USB.
+La latencia restante (~25–100ms) es inherente a la captura y compresión de video.
+Reducirla por debajo de ~20ms requeriría un codec especializado (WebRTC/RTP) o
+transmisión sin comprimir, que a resolución nativa no es viable por USB.
