@@ -23,6 +23,8 @@ class Home {
         GtkWidget* window;
         GtkWidget* transmit_button;
         GtkWidget* cancel_button;
+        GtkWidget* status_label;
+        GtkWidget* status_dot;
         std::function<void()> on_request_permissions_callback_;
         std::function<void()> on_cancel_transmission_callback_;
 };
