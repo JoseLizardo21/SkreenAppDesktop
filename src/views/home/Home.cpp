@@ -72,12 +72,20 @@ static const char* APP_CSS =
     "  color: #6c7086;"
     "  font-size: 16px;"
     "}"
+    ".dot-ready {"
+    "  color: #89b4fa;"
+    "  font-size: 16px;"
+    "}"
     ".dot-active {"
     "  color: #a6e3a1;"
     "  font-size: 16px;"
     "}"
     ".status-idle {"
     "  color: #6c7086;"
+    "  font-size: 13px;"
+    "}"
+    ".status-ready {"
+    "  color: #89b4fa;"
     "  font-size: 13px;"
     "}"
     ".status-active {"
@@ -170,7 +178,7 @@ Home::Home() {
     gtk_style_context_add_class(gtk_widget_get_style_context(status_dot), "dot-idle");
     gtk_box_pack_start(GTK_BOX(status_row), status_dot, FALSE, FALSE, 0);
 
-    status_label = gtk_label_new("Listo para transmitir");
+    status_label = gtk_label_new("Esperando dispositivo...");
     gtk_style_context_add_class(gtk_widget_get_style_context(status_label), "status-idle");
     gtk_box_pack_start(GTK_BOX(status_row), status_label, FALSE, FALSE, 0);
 
@@ -207,8 +215,33 @@ Home::Home() {
     gtk_widget_set_no_show_all(cancel_button, TRUE);
 }
 
+static void reset_status_classes(GtkStyleContext* dot, GtkStyleContext* lbl) {
+    gtk_style_context_remove_class(dot, "dot-idle");
+    gtk_style_context_remove_class(dot, "dot-ready");
+    gtk_style_context_remove_class(dot, "dot-active");
+    gtk_style_context_remove_class(lbl, "status-idle");
+    gtk_style_context_remove_class(lbl, "status-ready");
+    gtk_style_context_remove_class(lbl, "status-active");
+}
+
 void Home::setTransmitButtonEnabled(bool enabled) {
     gtk_widget_set_sensitive(transmit_button, enabled);
+}
+
+void Home::setDeviceConnected(bool connected) {
+    GtkStyleContext* dot_ctx = gtk_widget_get_style_context(status_dot);
+    GtkStyleContext* lbl_ctx = gtk_widget_get_style_context(status_label);
+    reset_status_classes(dot_ctx, lbl_ctx);
+
+    if (connected) {
+        gtk_label_set_text(GTK_LABEL(status_label), "Dispositivo conectado");
+        gtk_style_context_add_class(dot_ctx, "dot-ready");
+        gtk_style_context_add_class(lbl_ctx, "status-ready");
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "Esperando dispositivo...");
+        gtk_style_context_add_class(dot_ctx, "dot-idle");
+        gtk_style_context_add_class(lbl_ctx, "status-idle");
+    }
 }
 
 void Home::setTransmitting(bool transmitting) {
@@ -218,19 +251,13 @@ void Home::setTransmitting(bool transmitting) {
     if (transmitting) {
         gtk_widget_hide(transmit_button);
         gtk_widget_show(cancel_button);
+        reset_status_classes(dot_ctx, lbl_ctx);
         gtk_label_set_text(GTK_LABEL(status_label), "Transmitiendo...");
-        gtk_style_context_remove_class(dot_ctx, "dot-idle");
         gtk_style_context_add_class(dot_ctx, "dot-active");
-        gtk_style_context_remove_class(lbl_ctx, "status-idle");
         gtk_style_context_add_class(lbl_ctx, "status-active");
     } else {
         gtk_widget_show(transmit_button);
         gtk_widget_hide(cancel_button);
-        gtk_label_set_text(GTK_LABEL(status_label), "Listo para transmitir");
-        gtk_style_context_remove_class(dot_ctx, "dot-active");
-        gtk_style_context_add_class(dot_ctx, "dot-idle");
-        gtk_style_context_remove_class(lbl_ctx, "status-active");
-        gtk_style_context_add_class(lbl_ctx, "status-idle");
     }
 }
 

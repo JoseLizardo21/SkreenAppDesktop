@@ -75,6 +75,7 @@ target_link_libraries(skreen_desktop
     home_controller
     portal_manager
     input_server
+    adb_monitor
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
     ${DBUS_LIBRARIES}

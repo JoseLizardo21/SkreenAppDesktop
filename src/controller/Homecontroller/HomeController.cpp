@@ -38,7 +38,19 @@ HomeController::HomeController(Home* home)
         });
     view_->setOnRequestPermissionsCallback([this]() { handleRequestPermissions(); });
     view_->setOnCancelTransmissionCallback([this]() { handleStopCapture(); });
-    view_->setTransmitButtonEnabled(true);
+
+    adb_monitor_ = std::make_unique<AdbMonitor>();
+    adb_monitor_->setOnDeviceConnected([this]() {
+        device_connected_ = true;
+        view_->setDeviceConnected(true);
+        view_->setTransmitButtonEnabled(true);
+    });
+    adb_monitor_->setOnDeviceDisconnected([this]() {
+        device_connected_ = false;
+        view_->setDeviceConnected(false);
+        view_->setTransmitButtonEnabled(false);
+    });
+    adb_monitor_->start();
 }
 
 HomeController::~HomeController() {}
@@ -123,7 +135,11 @@ void HomeController::onGStreamerError(const std::string& error) {
 void HomeController::handleStopCapture() {
     closeFirewallPort();
 
-    if (view_) view_->setTransmitting(false);
+    if (view_) {
+        view_->setTransmitting(false);
+        view_->setDeviceConnected(device_connected_);
+        view_->setTransmitButtonEnabled(device_connected_);
+    }
 
     if (input_server_) {
         input_server_->stop();

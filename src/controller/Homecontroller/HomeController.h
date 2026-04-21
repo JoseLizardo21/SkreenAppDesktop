@@ -6,6 +6,7 @@
 #include "../../services/system/portalmanager/PortalManager.h"
 #include "../../services/media/gstreamermanager/GStreamerManager.h"
 #include "../../services/input/InputServer.h"
+#include "../../services/adb/AdbMonitor.h"
 
 class Home;
 
@@ -19,9 +20,11 @@ public:
     void handleStopCapture();
 private:
     Home* view_;
+    bool device_connected_ = false;
     std::unique_ptr<PortalManager> portal_manager_;
     std::unique_ptr<GStreamerManager> gstreamer_manager_;
     std::unique_ptr<InputServer> input_server_;
+    std::unique_ptr<AdbMonitor> adb_monitor_;
 };
 
 #endif

@@ -19,6 +19,7 @@ class Home {
         void cancelTransmission();
         void setTransmitButtonEnabled(bool enabled);
         void setTransmitting(bool transmitting);
+        void setDeviceConnected(bool connected);
     private:
         GtkWidget* window;
         GtkWidget* transmit_button;
