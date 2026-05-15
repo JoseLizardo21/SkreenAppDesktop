@@ -178,7 +178,7 @@ Home::Home() {
     gtk_style_context_add_class(gtk_widget_get_style_context(status_dot), "dot-idle");
     gtk_box_pack_start(GTK_BOX(status_row), status_dot, FALSE, FALSE, 0);
 
-    status_label = gtk_label_new("Esperando dispositivo...");
+    status_label = gtk_label_new("Waiting for device...");
     gtk_style_context_add_class(gtk_widget_get_style_context(status_label), "status-idle");
     gtk_box_pack_start(GTK_BOX(status_row), status_label, FALSE, FALSE, 0);
 
@@ -194,7 +194,7 @@ Home::Home() {
     gtk_widget_set_margin_end(t_box, 4);
     GtkWidget* t_icon = gtk_image_new_from_icon_name("media-record-symbolic", GTK_ICON_SIZE_BUTTON);
     gtk_box_pack_start(GTK_BOX(t_box), t_icon, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(t_box), gtk_label_new("Transmitir pantalla"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(t_box), gtk_label_new("Start streaming"), FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(transmit_button), t_box);
     gtk_style_context_add_class(gtk_widget_get_style_context(transmit_button), "transmit-btn");
     gtk_widget_set_sensitive(transmit_button, false);
@@ -207,7 +207,7 @@ Home::Home() {
     gtk_widget_set_margin_end(c_box, 4);
     GtkWidget* c_icon = gtk_image_new_from_icon_name("media-playback-stop-symbolic", GTK_ICON_SIZE_BUTTON);
     gtk_box_pack_start(GTK_BOX(c_box), c_icon, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(c_box), gtk_label_new("Detener transmisión"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(c_box), gtk_label_new("Stop streaming"), FALSE, FALSE, 0);
     gtk_container_add(GTK_CONTAINER(cancel_button), c_box);
     gtk_style_context_add_class(gtk_widget_get_style_context(cancel_button), "cancel-btn");
     g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), this);
@@ -234,11 +234,11 @@ void Home::setDeviceConnected(bool connected) {
     reset_status_classes(dot_ctx, lbl_ctx);
 
     if (connected) {
-        gtk_label_set_text(GTK_LABEL(status_label), "Dispositivo conectado");
+        gtk_label_set_text(GTK_LABEL(status_label), "Device connected");
         gtk_style_context_add_class(dot_ctx, "dot-ready");
         gtk_style_context_add_class(lbl_ctx, "status-ready");
     } else {
-        gtk_label_set_text(GTK_LABEL(status_label), "Esperando dispositivo...");
+        gtk_label_set_text(GTK_LABEL(status_label), "Waiting for device...");
         gtk_style_context_add_class(dot_ctx, "dot-idle");
         gtk_style_context_add_class(lbl_ctx, "status-idle");
     }
@@ -253,7 +253,7 @@ void Home::setTransmitting(bool transmitting) {
         gtk_widget_show_all(gtk_bin_get_child(GTK_BIN(cancel_button)));
         gtk_widget_show(cancel_button);
         reset_status_classes(dot_ctx, lbl_ctx);
-        gtk_label_set_text(GTK_LABEL(status_label), "Transmitiendo...");
+        gtk_label_set_text(GTK_LABEL(status_label), "Streaming...");
         gtk_style_context_add_class(dot_ctx, "dot-active");
         gtk_style_context_add_class(lbl_ctx, "status-active");
     } else {
