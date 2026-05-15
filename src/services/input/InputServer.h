@@ -16,6 +16,7 @@ public:
     void stop();
 private:
     int server_fd_{-1};
+    std::atomic<int> client_fd_{-1};
     std::atomic<bool> running_{false};
     std::thread thread_;
     InputEventCallback callback_;

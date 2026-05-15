@@ -21,6 +21,8 @@ void InputServer::start(InputEventCallback cb) {
 
 void InputServer::stop() {
     running_ = false;
+    int cfd = client_fd_.load();
+    if (cfd >= 0) shutdown(cfd, SHUT_RDWR);  // unblocks recv() in serverLoop
     if (server_fd_ >= 0) {
         shutdown(server_fd_, SHUT_RDWR);
         close(server_fd_);
@@ -89,6 +91,8 @@ void InputServer::serverLoop() {
         int flag = 1;
         setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
+        client_fd_ = client_fd;
+
         // Read 13-byte packets until client disconnects
         uint8_t buf[13];
         while (running_) {
@@ -110,6 +114,7 @@ void InputServer::serverLoop() {
         }
 
     client_done:
+        client_fd_ = -1;
         std::cout << "[InputServer] Client disconnected: " << ip << "\n";
         close(client_fd);
     }

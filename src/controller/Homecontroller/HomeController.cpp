@@ -43,13 +43,21 @@ HomeController::HomeController(Home* home)
     adb_monitor_ = std::make_unique<AdbMonitor>();
     adb_monitor_->setOnDeviceConnected([this]() {
         device_connected_ = true;
-        view_->setDeviceConnected(true);
-        view_->setTransmitButtonEnabled(true);
+        auto* v = view_;
+        g_idle_add([](gpointer data) -> gboolean {
+            static_cast<Home*>(data)->setDeviceConnected(true);
+            static_cast<Home*>(data)->setTransmitButtonEnabled(true);
+            return G_SOURCE_REMOVE;
+        }, v);
     });
     adb_monitor_->setOnDeviceDisconnected([this]() {
         device_connected_ = false;
-        view_->setDeviceConnected(false);
-        view_->setTransmitButtonEnabled(false);
+        auto* v = view_;
+        g_idle_add([](gpointer data) -> gboolean {
+            static_cast<Home*>(data)->setDeviceConnected(false);
+            static_cast<Home*>(data)->setTransmitButtonEnabled(false);
+            return G_SOURCE_REMOVE;
+        }, v);
     });
     adb_monitor_->start();
 }
@@ -123,7 +131,13 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         }
     });
 
-    if (view_) view_->setTransmitting(true);
+    if (view_) {
+        auto* v = view_;
+        g_idle_add([](gpointer data) -> gboolean {
+            static_cast<Home*>(data)->setTransmitting(true);
+            return G_SOURCE_REMOVE;
+        }, v);
+    }
     std::cout << "Streaming TCP en puerto 9002\n";
     std::cout << "Input control TCP en puerto 9003\n";
     std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003\n";
@@ -153,9 +167,9 @@ void HomeController::handleStopCapture() {
     // Run blocking cleanup off the GTK main thread
     if (stop_thread_.joinable()) stop_thread_.join();
     stop_thread_ = std::thread([this]() {
-        closeFirewallPort();
         if (input_server_) { input_server_->stop(); input_server_.reset(); }
         if (gstreamer_manager_) gstreamer_manager_->stopCapture();
         if (portal_manager_) portal_manager_->stop();
+        closeFirewallPort();  // last: may block waiting for pkexec
     });
 }
