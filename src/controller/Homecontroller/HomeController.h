@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <atomic>
+#include <thread>
 #include "../../services/system/portalmanager/PortalManager.h"
 #include "../../services/media/gstreamermanager/GStreamerManager.h"
 #include "../../services/input/InputServer.h"
@@ -25,6 +26,7 @@ private:
     std::unique_ptr<GStreamerManager> gstreamer_manager_;
     std::unique_ptr<InputServer> input_server_;
     std::unique_ptr<AdbMonitor> adb_monitor_;
+    std::thread stop_thread_;
 };
 
 #endif

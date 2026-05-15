@@ -4,6 +4,7 @@
 #include <memory>
 #include <iostream>
 #include <cstdlib>
+#include <glib.h>
 
 static bool firewalld_port_opened = false;
 
@@ -53,7 +54,9 @@ HomeController::HomeController(Home* home)
     adb_monitor_->start();
 }
 
-HomeController::~HomeController() {}
+HomeController::~HomeController() {
+    if (stop_thread_.joinable()) stop_thread_.join();
+}
 
 void HomeController::handleRequestPermissions() {
     openFirewallPort();
@@ -133,22 +136,26 @@ void HomeController::onGStreamerError(const std::string& error) {
 
 
 void HomeController::handleStopCapture() {
-    closeFirewallPort();
+    // Update UI immediately from the GTK main loop (safe from any thread)
+    struct Ctx { Home* view; bool connected; };
+    auto* ctx = new Ctx{view_, device_connected_};
+    g_idle_add([](gpointer data) -> gboolean {
+        auto* c = static_cast<Ctx*>(data);
+        if (c->view) {
+            c->view->setTransmitting(false);
+            c->view->setDeviceConnected(c->connected);
+            c->view->setTransmitButtonEnabled(c->connected);
+        }
+        delete c;
+        return G_SOURCE_REMOVE;
+    }, ctx);
 
-    if (view_) {
-        view_->setTransmitting(false);
-        view_->setDeviceConnected(device_connected_);
-        view_->setTransmitButtonEnabled(device_connected_);
-    }
-
-    if (input_server_) {
-        input_server_->stop();
-        input_server_.reset();
-    }
-
-    if (gstreamer_manager_) {
-        gstreamer_manager_->stopCapture();
-    }
-
-    if (portal_manager_) portal_manager_->stop();
+    // Run blocking cleanup off the GTK main thread
+    if (stop_thread_.joinable()) stop_thread_.join();
+    stop_thread_ = std::thread([this]() {
+        closeFirewallPort();
+        if (input_server_) { input_server_->stop(); input_server_.reset(); }
+        if (gstreamer_manager_) gstreamer_manager_->stopCapture();
+        if (portal_manager_) portal_manager_->stop();
+    });
 }
