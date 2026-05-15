@@ -87,6 +87,9 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         return;
     }
 
+    notify_server_ = std::make_unique<NotifyServer>();
+    notify_server_->start();
+
     input_server_ = std::make_unique<InputServer>();
     auto* pm = portal_manager_.get();
     auto* gm = gstreamer_manager_.get();
@@ -140,7 +143,8 @@ void HomeController::onPortalComplete(const std::string& session_handle,
     }
     std::cout << "Streaming TCP en puerto 9002\n";
     std::cout << "Input control TCP en puerto 9003\n";
-    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003\n";
+    std::cout << "Notify TCP en puerto 9004\n";
+    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003 && adb reverse tcp:9004 tcp:9004\n";
 }
 
 void HomeController::onGStreamerError(const std::string& error) {
@@ -167,6 +171,7 @@ void HomeController::handleStopCapture() {
     // Run blocking cleanup off the GTK main thread
     if (stop_thread_.joinable()) stop_thread_.join();
     stop_thread_ = std::thread([this]() {
+        if (notify_server_) { notify_server_->send("{\"type\":\"stream_stopped\"}\n"); notify_server_->stop(); notify_server_.reset(); }
         if (input_server_) { input_server_->stop(); input_server_.reset(); }
         if (gstreamer_manager_) gstreamer_manager_->stopCapture();
         if (portal_manager_) portal_manager_->stop();

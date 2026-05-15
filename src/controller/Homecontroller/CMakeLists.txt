@@ -17,4 +17,5 @@ target_include_directories(home_controller PUBLIC
 target_link_libraries(home_controller PUBLIC
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
+    notify_server
 )

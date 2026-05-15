@@ -8,6 +8,7 @@
 #include "../../services/media/gstreamermanager/GStreamerManager.h"
 #include "../../services/input/InputServer.h"
 #include "../../services/adb/AdbMonitor.h"
+#include "../../services/notify/NotifyServer.h"
 
 class Home;
 
@@ -26,6 +27,7 @@ private:
     std::unique_ptr<GStreamerManager> gstreamer_manager_;
     std::unique_ptr<InputServer> input_server_;
     std::unique_ptr<AdbMonitor> adb_monitor_;
+    std::unique_ptr<NotifyServer> notify_server_;
     std::thread stop_thread_;
 };
 
