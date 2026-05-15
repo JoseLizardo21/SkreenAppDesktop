@@ -250,6 +250,7 @@ void Home::setTransmitting(bool transmitting) {
 
     if (transmitting) {
         gtk_widget_hide(transmit_button);
+        gtk_widget_show_all(gtk_bin_get_child(GTK_BIN(cancel_button)));
         gtk_widget_show(cancel_button);
         reset_status_classes(dot_ctx, lbl_ctx);
         gtk_label_set_text(GTK_LABEL(status_label), "Transmitiendo...");
