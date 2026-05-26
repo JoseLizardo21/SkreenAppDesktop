@@ -14,18 +14,20 @@ static bool isFirewalldActive() {
 
 static void openFirewallPort() {
     if (!isFirewalldActive()) return;
-    if (std::system("firewall-cmd --query-port=9002/tcp --zone=public -q 2>/dev/null") == 0) return;
-    if (std::system("pkexec firewall-cmd --add-port=9002/tcp --zone=public 2>/dev/null") == 0) {
+    if (std::system("firewall-cmd --query-port=9002/tcp --zone=public -q 2>/dev/null") == 0 &&
+        std::system("firewall-cmd --query-port=9003/tcp --zone=public -q 2>/dev/null") == 0 &&
+        std::system("firewall-cmd --query-port=9004/tcp --zone=public -q 2>/dev/null") == 0) return;
+    if (std::system("pkexec /usr/local/lib/skreenapp/skreenapp-firewall-helper open 2>/dev/null") == 0) {
         firewalld_port_opened = true;
-        std::cout << "🔓 Puerto 9002 abierto en firewalld\n";
+        std::cout << "Ports 9002, 9003, 9004 opened in firewalld\n";
     }
 }
 
 static void closeFirewallPort() {
     if (!firewalld_port_opened) return;
-    std::system("pkexec firewall-cmd --remove-port=9002/tcp --zone=public 2>/dev/null");
+    std::system("pkexec /usr/local/lib/skreenapp/skreenapp-firewall-helper close 2>/dev/null");
     firewalld_port_opened = false;
-    std::cout << "🔒 Puerto 9002 cerrado en firewalld\n";
+    std::cout << "Ports 9002, 9003, 9004 closed in firewalld\n";
 }
 
 HomeController::HomeController(Home* home)

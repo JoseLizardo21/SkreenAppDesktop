@@ -1,0 +1,18 @@
+#!/bin/bash
+# Ejecutado como root via pkexec por SkreenApp para gestionar el firewall
+case "$1" in
+    open)
+        firewall-cmd --add-port=9002/tcp --zone=public
+        firewall-cmd --add-port=9003/tcp --zone=public
+        firewall-cmd --add-port=9004/tcp --zone=public
+        ;;
+    close)
+        firewall-cmd --remove-port=9002/tcp --zone=public
+        firewall-cmd --remove-port=9003/tcp --zone=public
+        firewall-cmd --remove-port=9004/tcp --zone=public
+        ;;
+    *)
+        echo "Usage: skreenapp-firewall-helper {open|close}" >&2
+        exit 1
+        ;;
+esac
