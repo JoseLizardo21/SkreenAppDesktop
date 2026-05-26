@@ -11,6 +11,7 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include "config/StreamConfig.h"
 
 class GStreamerManager {
 public:
@@ -22,6 +23,7 @@ public:
     static void initializeGStreamer();
 
     void setErrorCallback(ErrorCallback callback) { error_callback_ = callback; }
+    void setConfig(const StreamConfig& cfg) { config_ = cfg; }
 
     bool initializePipeline(int fd, uint32_t node_id);
     bool startCapture();
@@ -40,6 +42,8 @@ private:
     GstElement* encoder_{nullptr};
     GstElement* h264parse_{nullptr};
     GstElement* appsink_{nullptr};
+
+    StreamConfig config_;
 
     bool is_capturing_{false};
     int fd_{-1};

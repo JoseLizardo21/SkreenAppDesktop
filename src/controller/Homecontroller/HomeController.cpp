@@ -1,5 +1,6 @@
 #include "HomeController.h"
 #include "../../views/home/Home.h"
+#include "../../views/settings/Settings.h"
 #include "../../services/system/portalmanager/PortalManager.h"
 #include <memory>
 #include <iostream>
@@ -32,6 +33,8 @@ static void closeFirewallPort() {
 
 HomeController::HomeController(Home* home)
     : view_(home) {
+    config_ = config_manager_.load();
+
     gstreamer_manager_ = std::make_unique<GStreamerManager>();
     portal_manager_ = std::make_unique<PortalManager>();
 
@@ -41,6 +44,7 @@ HomeController::HomeController(Home* home)
         });
     view_->setOnRequestPermissionsCallback([this]() { handleRequestPermissions(); });
     view_->setOnCancelTransmissionCallback([this]() { handleStopCapture(); });
+    view_->setOnSettingsCallback([this]() { handleOpenSettings(); });
 
     adb_monitor_ = std::make_unique<AdbMonitor>();
     adb_monitor_->setOnDeviceConnected([this]() {
@@ -79,6 +83,7 @@ void HomeController::onPortalComplete(const std::string& session_handle,
 
     if (!gstreamer_manager_) return;
 
+    gstreamer_manager_->setConfig(config_);
     if (!gstreamer_manager_->initializePipeline(fd, node_id)) {
         onGStreamerError("Failed to initialize pipeline");
         return;
@@ -154,6 +159,18 @@ void HomeController::onGStreamerError(const std::string& error) {
     handleStopCapture();
 }
 
+
+void HomeController::handleOpenSettings() {
+    auto* s = new Settings(view_->getGtkWindow(), config_);
+    s->setOnSaveCallback([this](StreamConfig cfg) {
+        config_ = cfg;
+        config_manager_.save(cfg);
+        std::cout << "Settings saved: bitrate=" << cfg.bitrate
+                  << " keyframe=" << cfg.keyframe_interval
+                  << " speed=" << cfg.encoder_speed << "\n";
+    });
+    s->show();
+}
 
 void HomeController::handleStopCapture() {
     // Update UI immediately from the GTK main loop (safe from any thread)

@@ -71,11 +71,13 @@ add_executable(skreen_desktop main.cpp)
 # ========== Enlazar con las librerías ==========
 target_link_libraries(skreen_desktop
     home_view
+    settings_view
     gstreamer_manager
     home_controller
     portal_manager
     input_server
     adb_monitor
+    config_manager
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
     ${DBUS_LIBRARIES}

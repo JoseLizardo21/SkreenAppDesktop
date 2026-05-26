@@ -78,28 +78,47 @@ bool GStreamerManager::createElements() {
 
         if (name == "vah264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000,
-                         "key-int-max", 5,     // IDR cada 167ms: recuperación rápida en scene changes
-                         "target-usage", 7,    // máxima velocidad de encoding
-                         "rate-control", 8,    // VCM: Video Conferencing Mode, optimizado para baja latencia
-                         "cpb-size", 1250,
-                         "ref-frames", 1,
-                         "b-frames", 0,
+                         "bitrate",       config_.bitrate,
+                         "key-int-max",   config_.keyframe_interval,
+                         "target-usage",  config_.encoder_speed,
+                         "rate-control",  8,
+                         "cpb-size",      config_.bitrate / 8,
+                         "ref-frames",    1,
+                         "b-frames",      0,
                          NULL);
         } else if (name == "vaapih264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "keyframe-period", 30, "quality-level", 7, NULL);
+                         "bitrate",         config_.bitrate,
+                         "keyframe-period", config_.keyframe_interval,
+                         "quality-level",   config_.encoder_speed,
+                         NULL);
         } else if (name == "nvh264enc") {
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000, "preset", 6, "rc-mode", 2, "zerolatency", TRUE, NULL);
+                         "bitrate",      config_.bitrate,
+                         "preset",       6,
+                         "rc-mode",      2,
+                         "zerolatency",  TRUE,
+                         NULL);
         } else if (name == "x264enc") {
+            // speed-preset: 1=ultrafast ... 8=veryslow; map encoder_speed 1=quality→7, 7=speed→1
+            int x264_speed = std::max(1, 8 - config_.encoder_speed);
             g_object_set(G_OBJECT(encoder_),
-                         "tune", 0x00000004, "speed-preset", 1, "bitrate", 10000,
-                         "key-int-max", 15, "threads", 4, "bframes", 0,
-                         "byte-stream", TRUE, "aud", FALSE, NULL);
+                         "tune",         0x00000004,
+                         "speed-preset", x264_speed,
+                         "bitrate",      config_.bitrate,
+                         "key-int-max",  config_.keyframe_interval,
+                         "threads",      4,
+                         "bframes",      0,
+                         "byte-stream",  TRUE,
+                         "aud",          FALSE,
+                         NULL);
         } else if (name == "openh264enc") {
+            int complexity = (config_.encoder_speed <= 3) ? 2 : (config_.encoder_speed <= 6) ? 1 : 0;
             g_object_set(G_OBJECT(encoder_),
-                         "bitrate", 10000000, "complexity", 0, "rate-control", 0, NULL);
+                         "bitrate",      config_.bitrate * 1000,  // bps
+                         "complexity",   complexity,
+                         "rate-control", 0,
+                         NULL);
         }
     }
 

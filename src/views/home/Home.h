@@ -15,11 +15,16 @@ class Home {
         void setOnCancelTransmissionCallback(std::function<void()> callback) {
             on_cancel_transmission_callback_ = callback;
         }
+        void setOnSettingsCallback(std::function<void()> callback) {
+            on_settings_callback_ = callback;
+        }
         void requestPermissions();
         void cancelTransmission();
+        void openSettings();
         void setTransmitButtonEnabled(bool enabled);
         void setTransmitting(bool transmitting);
         void setDeviceConnected(bool connected);
+        GtkWindow* getGtkWindow() { return GTK_WINDOW(window); }
     private:
         GtkWidget* window;
         GtkWidget* transmit_button;
@@ -28,6 +33,7 @@ class Home {
         GtkWidget* status_dot;
         std::function<void()> on_request_permissions_callback_;
         std::function<void()> on_cancel_transmission_callback_;
+        std::function<void()> on_settings_callback_;
 };
 
 #endif

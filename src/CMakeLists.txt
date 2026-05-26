@@ -1,5 +1,8 @@
 # CMakeLists.txt para el directorio src
 
+# Config
+add_subdirectory(config)
+
 # Añadir subdirectorios de controladores
 add_subdirectory(controller/Homecontroller)
 
@@ -9,6 +12,7 @@ add_subdirectory(services/websocketclient)
 
 # Añadir subdirectorios de vistas
 add_subdirectory(views/home)
+add_subdirectory(views/settings)
 add_subdirectory(services/media/gstreamermanager)
 add_subdirectory(services/input)
 add_subdirectory(services/adb)

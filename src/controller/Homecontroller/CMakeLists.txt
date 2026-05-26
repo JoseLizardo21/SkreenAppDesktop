@@ -18,4 +18,6 @@ target_link_libraries(home_controller PUBLIC
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
     notify_server
+    settings_view
+    config_manager
 )

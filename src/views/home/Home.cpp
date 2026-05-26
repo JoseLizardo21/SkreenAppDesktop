@@ -9,12 +9,20 @@ static void on_cancel_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->cancelTransmission();
 }
 
+static void on_settings_clicked(GtkWidget*, gpointer data) {
+    static_cast<Home*>(data)->openSettings();
+}
+
 void Home::requestPermissions() {
     if (on_request_permissions_callback_) on_request_permissions_callback_();
 }
 
 void Home::cancelTransmission() {
     if (on_cancel_transmission_callback_) on_cancel_transmission_callback_();
+}
+
+void Home::openSettings() {
+    if (on_settings_callback_) on_settings_callback_();
 }
 
 static const char* APP_CSS =
@@ -145,6 +153,14 @@ Home::Home() {
     gtk_header_bar_set_title(GTK_HEADER_BAR(header), "Skreen");
     gtk_header_bar_set_subtitle(GTK_HEADER_BAR(header), "Desktop Streamer");
     gtk_window_set_titlebar(GTK_WINDOW(window), header);
+
+    GtkWidget* settings_btn = gtk_button_new();
+    GtkWidget* settings_icon = gtk_image_new_from_icon_name("preferences-system-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_button_set_image(GTK_BUTTON(settings_btn), settings_icon);
+    gtk_style_context_add_class(gtk_widget_get_style_context(settings_btn), "titlebutton");
+    gtk_widget_set_tooltip_text(settings_btn, "Settings");
+    g_signal_connect(settings_btn, "clicked", G_CALLBACK(on_settings_clicked), this);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), settings_btn);
 
     GtkCssProvider* css = gtk_css_provider_new();
     gtk_css_provider_load_from_data(css, APP_CSS, -1, NULL);

@@ -9,6 +9,7 @@
 #include "../../services/input/InputServer.h"
 #include "../../services/adb/AdbMonitor.h"
 #include "../../services/notify/NotifyServer.h"
+#include "config/ConfigManager.h"
 
 class Home;
 
@@ -17,12 +18,15 @@ public:
     HomeController(Home* home);
     ~HomeController();
     void handleRequestPermissions();
+    void handleOpenSettings();
     void onPortalComplete(const std::string& session_handle, uint32_t node_id, int fd);
     void onGStreamerError(const std::string& message);
     void handleStopCapture();
 private:
     Home* view_;
     bool device_connected_ = false;
+    StreamConfig config_;
+    ConfigManager config_manager_;
     std::unique_ptr<PortalManager> portal_manager_;
     std::unique_ptr<GStreamerManager> gstreamer_manager_;
     std::unique_ptr<InputServer> input_server_;
