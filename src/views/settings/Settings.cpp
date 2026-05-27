@@ -48,17 +48,39 @@ static const char* SETTINGS_CSS =
     "  background-color: #45475a;"
     "  color: #cdd6f4;"
     "}"
-    "headerbar button.suggested-action {"
+    "headerbar button.save-btn {"
     "  background-image: none;"
-    "  background-color: #89b4fa;"
-    "  color: #1e1e2e;"
+    "  background-color: #3d84ef;"
+    "  color: #ffffff;"
     "  border: none;"
+    "  outline: none;"
     "  border-radius: 6px;"
     "  font-weight: bold;"
     "  padding: 4px 14px;"
     "}"
-    "headerbar button.suggested-action:hover {"
-    "  background-color: #b4d0ff;"
+    "headerbar button.save-btn:hover {"
+    "  background-color: #5497fc;"
+    "}"
+    "headerbar button.save-btn:focus {"
+    "  outline: none;"
+    "  box-shadow: none;"
+    "}"
+    "headerbar button.cancel-btn {"
+    "  background-image: none;"
+    "  background-color: #c0394f;"
+    "  color: #ffffff;"
+    "  border: none;"
+    "  outline: none;"
+    "  border-radius: 6px;"
+    "  font-weight: bold;"
+    "  padding: 4px 14px;"
+    "}"
+    "headerbar button.cancel-btn:hover {"
+    "  background-color: #e0425f;"
+    "}"
+    "headerbar button.cancel-btn:focus {"
+    "  outline: none;"
+    "  box-shadow: none;"
     "}";
 
 static GtkWidget* make_row(GtkWidget* grid, int row,
@@ -137,6 +159,18 @@ Settings::Settings(GtkWindow* parent, const StreamConfig& current) {
                                1,    120,   1,   current.keyframe_interval, "frames");
     spin_speed_    = make_row(grid, 2, "Encoder Speed",      "1 = best quality   7 = fastest",
                                1,    7,     1,   current.encoder_speed,     "");
+
+    GtkWidget* save_btn = gtk_dialog_get_widget_for_response(GTK_DIALOG(dialog_), GTK_RESPONSE_ACCEPT);
+    if (save_btn) {
+        GtkStyleContext* ctx = gtk_widget_get_style_context(save_btn);
+        gtk_style_context_remove_class(ctx, "suggested-action");
+        gtk_style_context_add_class(ctx, "save-btn");
+    }
+
+    GtkWidget* cancel_btn = gtk_dialog_get_widget_for_response(GTK_DIALOG(dialog_), GTK_RESPONSE_CANCEL);
+    if (cancel_btn) {
+        gtk_style_context_add_class(gtk_widget_get_style_context(cancel_btn), "cancel-btn");
+    }
 
     g_signal_connect(dialog_, "response", G_CALLBACK(on_response), this);
 
