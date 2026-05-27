@@ -25,8 +25,10 @@ static void openFirewallPort() {
 }
 
 static void closeFirewallPort() {
+    // Runtime rules (no --permanent) disappear on firewalld restart or reboot,
+    // so closing actively is not required and avoids an extra pkexec dialog.
     if (!firewalld_port_opened) return;
-    std::system("pkexec /usr/local/lib/skreenapp/skreenapp-firewall-helper close 2>/dev/null");
+    std::system("firewall-cmd --remove-port=9002/tcp --remove-port=9003/tcp --remove-port=9004/tcp --zone=public -q 2>/dev/null");
     firewalld_port_opened = false;
     std::cout << "Ports 9002, 9003, 9004 closed in firewalld\n";
 }
@@ -70,6 +72,7 @@ HomeController::HomeController(Home* home)
 
 HomeController::~HomeController() {
     if (stop_thread_.joinable()) stop_thread_.join();
+    closeFirewallPort();
 }
 
 void HomeController::handleRequestPermissions() {
@@ -194,6 +197,5 @@ void HomeController::handleStopCapture() {
         if (input_server_) { input_server_->stop(); input_server_.reset(); }
         if (gstreamer_manager_) gstreamer_manager_->stopCapture();
         if (portal_manager_) portal_manager_->stop();
-        closeFirewallPort();  // last: may block waiting for pkexec
     });
 }
