@@ -20,6 +20,7 @@ Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 Requires:       firewalld
 Requires:       polkit
+Requires:       android-tools
 
 %description
 SkreenApp Desktop allows you to stream your desktop screen to a mobile
