@@ -81,6 +81,25 @@ static const char* SETTINGS_CSS =
     "headerbar button.cancel-btn:focus {"
     "  outline: none;"
     "  box-shadow: none;"
+    "}"
+    "button.reset-btn {"
+    "  background-image: none;"
+    "  background-color: #313244;"
+    "  color: #cdd6f4;"
+    "  border: 1px solid #585b70;"
+    "  border-radius: 6px;"
+    "  font-size: 13px;"
+    "  font-weight: bold;"
+    "  padding: 6px 16px;"
+    "}"
+    "button.reset-btn:hover {"
+    "  background-color: #45475a;"
+    "  color: #ffffff;"
+    "  border-color: #7f849c;"
+    "}"
+    "button.reset-btn:focus {"
+    "  outline: none;"
+    "  box-shadow: none;"
     "}";
 
 static GtkWidget* make_row(GtkWidget* grid, int row,
@@ -159,6 +178,21 @@ Settings::Settings(GtkWindow* parent, const StreamConfig& current) {
                                1,    120,   1,   current.keyframe_interval, "frames");
     spin_speed_    = make_row(grid, 2, "Encoder Speed",      "1 = best quality   7 = fastest",
                                1,    7,     1,   current.encoder_speed,     "");
+
+    GtkWidget* separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_box_pack_start(GTK_BOX(content), separator, FALSE, FALSE, 0);
+
+    GtkWidget* reset_btn = gtk_button_new_with_label("Reset to factory defaults");
+    gtk_style_context_add_class(gtk_widget_get_style_context(reset_btn), "reset-btn");
+    gtk_widget_set_halign(reset_btn, GTK_ALIGN_CENTER);
+    gtk_box_pack_start(GTK_BOX(content), reset_btn, FALSE, FALSE, 0);
+
+    g_signal_connect(reset_btn, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
+        auto* self = static_cast<Settings*>(data);
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_bitrate_),  10000);
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_keyframe_), 30);
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_speed_),    7);
+    }), this);
 
     GtkWidget* save_btn = gtk_dialog_get_widget_for_response(GTK_DIALOG(dialog_), GTK_RESPONSE_ACCEPT);
     if (save_btn) {
