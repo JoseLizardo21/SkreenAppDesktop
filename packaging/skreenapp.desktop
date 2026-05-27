@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=SkreenApp
+Comment=Stream your desktop to your mobile device
+Exec=skreen_desktop
+Icon=skreenapp
+Terminal=false
+Type=Application
+Categories=Utility;

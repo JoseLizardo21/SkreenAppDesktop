@@ -1,0 +1,70 @@
+Name:           skreenapp
+Version:        0.1.0
+Release:        1%{?dist}
+Summary:        Desktop app for screen streaming to mobile via SkreenApp
+License:        Proprietary
+
+Source0:        %{name}-%{version}.tar.gz
+
+BuildRequires:  cmake >= 3.10
+BuildRequires:  gcc-c++
+BuildRequires:  pkgconfig(gtk+-3.0)
+BuildRequires:  pkgconfig(gstreamer-1.0)
+BuildRequires:  pkgconfig(gstreamer-app-1.0)
+BuildRequires:  pkgconfig(gstreamer-video-1.0)
+BuildRequires:  pkgconfig(dbus-1)
+BuildRequires:  git
+
+Requires:       gtk3
+Requires:       gstreamer1
+Requires:       gstreamer1-plugins-base
+Requires:       firewalld
+Requires:       polkit
+
+%description
+SkreenApp Desktop allows you to stream your desktop screen to a mobile
+device using the SkreenApp mobile application.
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+mkdir -p _build
+cd _build
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=%{_prefix}
+%make_build
+
+%install
+install -Dm755 _build/skreen_desktop \
+    %{buildroot}%{_bindir}/skreen_desktop
+
+install -Dm644 src/assets/logo-removebg-preview.png \
+    %{buildroot}%{_datadir}/pixmaps/skreenapp.png
+
+install -Dm644 packaging/skreenapp.desktop \
+    %{buildroot}%{_datadir}/applications/skreenapp.desktop
+
+install -Dm644 polkit/com.skreenapp.firewall.policy \
+    %{buildroot}%{_datadir}/polkit-1/actions/com.skreenapp.firewall.policy
+
+install -Dm755 scripts/skreenapp-firewall-helper \
+    %{buildroot}/usr/local/lib/skreenapp/skreenapp-firewall-helper
+
+%post
+update-desktop-database %{_datadir}/applications &>/dev/null || :
+
+%postun
+update-desktop-database %{_datadir}/applications &>/dev/null || :
+
+%files
+%{_bindir}/skreen_desktop
+%{_datadir}/pixmaps/skreenapp.png
+%{_datadir}/applications/skreenapp.desktop
+%{_datadir}/polkit-1/actions/com.skreenapp.firewall.policy
+/usr/local/lib/skreenapp/skreenapp-firewall-helper
+
+%changelog
+* Tue May 27 2026 Lizardo <jose.212002lizardo@gmail.com> - 0.1.0-1
+- Initial RPM package
