@@ -27,6 +27,26 @@ make
 ./skreen_desktop
 ```
 
+# Empaquetar como RPM
+
+Asegúrate de tener `rpmbuild` instalado:
+
+```bash
+sudo dnf install -y rpm-build rsync
+```
+
+Luego ejecuta:
+
+```bash
+./packaging/build-rpm.sh
+```
+
+El paquete `.rpm` quedará en `~/rpmbuild/RPMS/`. Para instalarlo:
+
+```bash
+sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm
+```
+
 # Conexión USB
 
 Conectar el celular por USB con USB debugging activado y ejecutar:
