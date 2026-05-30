@@ -57,8 +57,6 @@ adb reverse tcp:9002 tcp:9002
 
 Luego abrir la app en el celular y pulsar **Conectar**.
 
-> El servidor Node.js ya no es necesario.
-
 # para la eliminacion
 
 rpm -qa | grep skreen
