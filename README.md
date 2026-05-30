@@ -47,6 +47,26 @@ El paquete `.rpm` quedará en `~/rpmbuild/RPMS/`. Para instalarlo:
 sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm
 ```
 
+# Empaquetar como DEB
+
+Ejecuta:
+
+```bash
+./packaging/build-deb.sh
+```
+
+El paquete `.deb` quedará en `packaging/`. Para instalarlo:
+
+```bash
+sudo apt install ./packaging/skreenapp_0.1.0_amd64.deb
+```
+
+Para desinstalarlo:
+
+```bash
+sudo apt remove skreenapp
+```
+
 # Conexión USB
 
 Conectar el celular por USB con USB debugging activado y ejecutar:
