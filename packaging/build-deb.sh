@@ -52,7 +52,7 @@ Package: $NAME
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Lizardo <jose.212002lizardo@gmail.com>
-Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, firewalld, policykit-1 | polkit, adb | android-tools-adb
+Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, firewalld, polkitd, adb
 Description: Desktop app for screen streaming to mobile via SkreenApp
  SkreenApp Desktop allows you to stream your desktop screen to a mobile
  device using the SkreenApp mobile application.
