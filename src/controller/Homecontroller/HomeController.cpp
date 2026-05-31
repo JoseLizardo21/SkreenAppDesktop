@@ -76,8 +76,15 @@ HomeController::~HomeController() {
 }
 
 void HomeController::handleRequestPermissions() {
-    openFirewallPort();
-    if (portal_manager_) portal_manager_->startAsync();
+    // Run pkexec off the GTK main thread to avoid freezing the UI
+    std::thread([this]() {
+        openFirewallPort();
+        g_idle_add([](gpointer data) -> gboolean {
+            auto* self = static_cast<HomeController*>(data);
+            if (self->portal_manager_) self->portal_manager_->startAsync();
+            return G_SOURCE_REMOVE;
+        }, this);
+    }).detach();
 }
 
 void HomeController::onPortalComplete(const std::string& session_handle,
