@@ -1,3 +1,6 @@
+#Cmake build
+cmake --build build
+
 
 # Requisitos
 
