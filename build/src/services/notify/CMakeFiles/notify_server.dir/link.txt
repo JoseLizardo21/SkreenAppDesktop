@@ -1,0 +1,2 @@
+/usr/bin/ar qc libnotify_server.a CMakeFiles/notify_server.dir/NotifyServer.cpp.o
+/usr/bin/ranlib libnotify_server.a
