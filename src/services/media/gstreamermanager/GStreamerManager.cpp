@@ -79,14 +79,14 @@ bool GStreamerManager::createElements()
         {"openh264enc", "H.264 OpenH264 software"},
         {nullptr, nullptr}};
 
-    // for (int i = 0; candidates[i].name && !encoder_; i++)
-    // {
-    //     encoder_ = gst_element_factory_make(candidates[i].name, "encoder");
-    //     if (!encoder_)
-    //         continue;
+    for (int i = 0; candidates[i].name && !encoder_; i++)
+    {
+        encoder_ = gst_element_factory_make(candidates[i].name, "encoder");
+        if (!encoder_)
+            continue;
 
-    //     std::cout << "  ✓ Encoder: " << candidates[i].label << "\n";
-    //     const std::string name = candidates[i].name;
+        std::cout << "  ✓ Encoder: " << candidates[i].label << "\n";
+        const std::string name = candidates[i].name;
 
         if (name == "vah264enc")
         {
