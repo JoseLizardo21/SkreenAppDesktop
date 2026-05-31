@@ -87,6 +87,7 @@ bool GStreamerManager::createElements()
 
         std::cout << "  ✓ Encoder: " << candidates[i].label << "\n";
         const std::string name = candidates[i].name;
+        encoder_name_ = name;
 
         if (name == "vah264enc")
         {
@@ -194,6 +195,18 @@ bool GStreamerManager::linkElements()
 
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
+    // Capsfilter pre-encoder: solo para x264enc, fuerza I420+sRGB para evitar tinte verde
+    GstElement *enc_in = gst_element_factory_make("capsfilter", "enc_in");
+    if (encoder_name_ == "x264enc")
+    {
+        GstCaps *yuv_caps = gst_caps_new_simple("video/x-raw",
+                                                "format", G_TYPE_STRING, "I420",
+                                                "colorimetry", G_TYPE_STRING, "bt709",
+                                                NULL);
+        g_object_set(G_OBJECT(enc_in), "caps", yuv_caps, NULL);
+        gst_caps_unref(yuv_caps);
+    }
+
     // Capsfilter que fuerza byte-stream (Annex-B) en la salida del h264parse
     GstElement *h264out = gst_element_factory_make("capsfilter", "h264_out");
     GstCaps *sink_caps = gst_caps_new_simple("video/x-h264",
@@ -205,11 +218,11 @@ bool GStreamerManager::linkElements()
 
     gst_bin_add_many(GST_BIN(pipeline_),
                      pipewiresrc_, queue_main_, videoconvert_,
-                     encoder_, h264parse_, h264out, appsink_,
+                     enc_in, encoder_, h264parse_, h264out, appsink_,
                      NULL);
 
     if (!gst_element_link_many(pipewiresrc_, queue_main_, videoconvert_,
-                               encoder_, h264parse_, h264out, appsink_,
+                               enc_in, encoder_, h264parse_, h264out, appsink_,
                                NULL))
     {
         error("Failed to link pipeline elements");

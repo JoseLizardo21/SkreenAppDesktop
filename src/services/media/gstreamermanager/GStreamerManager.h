@@ -43,6 +43,7 @@ private:
     GstElement* h264parse_{nullptr};
     GstElement* appsink_{nullptr};
 
+    std::string encoder_name_;
     StreamConfig config_;
 
     bool is_capturing_{false};
