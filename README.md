@@ -1,4 +1,5 @@
 #Cmake build
+cmake -B build -S .
 cmake --build build
 
 
