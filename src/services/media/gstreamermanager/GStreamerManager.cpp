@@ -119,8 +119,6 @@ bool GStreamerManager::createElements()
         }
         else if (name == "x264enc")
         {
-            // speed-preset: 1=ultrafast ... 8=veryslow; map encoder_speed 1=quality→7, 7=speed→1
-            int x264_speed = std::max(1, 8 - config_.encoder_speed);
             g_object_set(G_OBJECT(encoder_),
                          "tune", 0x00000004,
                          "speed-preset", 1,
