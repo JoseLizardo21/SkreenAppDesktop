@@ -79,14 +79,14 @@ bool GStreamerManager::createElements()
         {"openh264enc", "H.264 OpenH264 software"},
         {nullptr, nullptr}};
 
-    for (int i = 0; candidates[i].name && !encoder_; i++)
-    {
-        encoder_ = gst_element_factory_make(candidates[i].name, "encoder");
-        if (!encoder_)
-            continue;
+    // for (int i = 0; candidates[i].name && !encoder_; i++)
+    // {
+    //     encoder_ = gst_element_factory_make(candidates[i].name, "encoder");
+    //     if (!encoder_)
+    //         continue;
 
-        std::cout << "  ✓ Encoder: " << candidates[i].label << "\n";
-        const std::string name = candidates[i].name;
+    //     std::cout << "  ✓ Encoder: " << candidates[i].label << "\n";
+    //     const std::string name = candidates[i].name;
 
         if (name == "vah264enc")
         {
@@ -197,12 +197,13 @@ bool GStreamerManager::linkElements()
 
     // Capsfilter que fuerza byte-stream (Annex-B) en la salida del h264parse
     GstElement *h264out = gst_element_factory_make("capsfilter", "h264_out");
-    GstCaps *h264caps = gst_caps_new_simple("video/x-h264",
-                                            "stream-format", G_TYPE_STRING, "byte-stream",
-                                            "alignment", G_TYPE_STRING, "au",
-                                            NULL);
-    g_object_set(G_OBJECT(h264out), "caps", h264caps, NULL);
-    gst_caps_unref(h264caps);
+    GstCaps *sink_caps = gst_caps_new_simple("video/x-h264",
+                                             "stream-format", G_TYPE_STRING, "byte-stream",
+                                             "alignment", G_TYPE_STRING, "au",
+                                             "profile", G_TYPE_STRING, "baseline",
+                                             NULL);
+    g_object_set(G_OBJECT(appsink_), "caps", sink_caps, NULL);
+    gst_caps_unref(sink_caps);
 
     gst_bin_add_many(GST_BIN(pipeline_),
                      pipewiresrc_, queue_main_, videoconvert_,
