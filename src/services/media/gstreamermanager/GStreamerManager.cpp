@@ -199,9 +199,8 @@ bool GStreamerManager::linkElements()
     GstCaps *sink_caps = gst_caps_new_simple("video/x-h264",
                                              "stream-format", G_TYPE_STRING, "byte-stream",
                                              "alignment", G_TYPE_STRING, "au",
-                                             "profile", G_TYPE_STRING, "baseline",
                                              NULL);
-    g_object_set(G_OBJECT(appsink_), "caps", sink_caps, NULL);
+    g_object_set(G_OBJECT(h264out), "caps", sink_caps, NULL);
     gst_caps_unref(sink_caps);
 
     gst_bin_add_many(GST_BIN(pipeline_),
