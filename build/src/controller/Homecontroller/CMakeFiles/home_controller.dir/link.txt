@@ -1,2 +1,0 @@
-/usr/bin/ar qc libhome_controller.a CMakeFiles/home_controller.dir/HomeController.cpp.o
-/usr/bin/ranlib libhome_controller.a

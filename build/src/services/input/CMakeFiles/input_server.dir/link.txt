@@ -1,2 +1,0 @@
-/usr/bin/ar qc libinput_server.a CMakeFiles/input_server.dir/InputServer.cpp.o
-/usr/bin/ranlib libinput_server.a

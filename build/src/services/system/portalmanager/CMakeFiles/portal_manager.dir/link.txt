@@ -1,2 +1,0 @@
-/usr/bin/ar qc libportal_manager.a CMakeFiles/portal_manager.dir/PortalManager.cpp.o
-/usr/bin/ranlib libportal_manager.a

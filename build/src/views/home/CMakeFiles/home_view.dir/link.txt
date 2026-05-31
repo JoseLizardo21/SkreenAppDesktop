@@ -1,2 +1,0 @@
-/usr/bin/ar qc libhome_view.a CMakeFiles/home_view.dir/Home.cpp.o
-/usr/bin/ranlib libhome_view.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libadb_monitor.a CMakeFiles/adb_monitor.dir/AdbMonitor.cpp.o
-/usr/bin/ranlib libadb_monitor.a

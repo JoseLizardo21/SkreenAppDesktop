@@ -1,2 +1,0 @@
-/usr/bin/ar qc libgstreamer_manager.a CMakeFiles/gstreamer_manager.dir/GStreamerManager.cpp.o
-/usr/bin/ranlib libgstreamer_manager.a
