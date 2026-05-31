@@ -18,6 +18,9 @@ BuildRequires:  git
 Requires:       gtk3
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
+Requires:       gstreamer1-plugins-ugly
+Requires:       gstreamer1-plugins-bad-free
+Requires:       gstreamer1-vaapi
 Requires:       firewalld
 Requires:       polkit
 Requires:       android-tools
