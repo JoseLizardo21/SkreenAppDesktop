@@ -130,7 +130,6 @@ bool GStreamerManager::createElements()
                          "bframes", 0,
                          "byte-stream", TRUE,
                          "aud", FALSE,
-                         "profile", 0,
                          NULL);
         }
         else if (name == "openh264enc")
@@ -411,12 +410,21 @@ GstFlowReturn GStreamerManager::onNewSample(GstElement *appsink, gpointer user_d
         // Log del primer sample (solo una vez)
         if (self->frames_sent_++ == 0)
         {
-            std::cout << "🎞️  Primer sample  size=" << map.size << " bytes"
-                      << "  primeros bytes: ";
-            for (gsize i = 0; i < std::min(map.size, (gsize)8); i++)
+            gsize show = std::min(map.size, (gsize)64);
+            std::printf("🎞️  Primer frame  size=%zu bytes\n", map.size);
+            std::printf("   Prefijo TCP (4 bytes, big-endian): %02X %02X %02X %02X\n",
+                        (uint8_t)((map.size >> 24) & 0xFF),
+                        (uint8_t)((map.size >> 16) & 0xFF),
+                        (uint8_t)((map.size >> 8) & 0xFF),
+                        (uint8_t)(map.size & 0xFF));
+            std::printf("   Datos H.264 (%zu bytes):\n   ", show);
+            for (gsize i = 0; i < show; i++)
+            {
                 std::printf("%02X ", map.data[i]);
+                if ((i + 1) % 16 == 0) std::printf("\n   ");
+            }
             std::printf("\n");
-            std::cout << "   (H.264 Annex-B: primeros bytes deben ser 00 00 00 01)\n";
+            std::printf("   (Annex-B correcto si empieza con 00 00 00 01)\n");
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -454,10 +462,21 @@ bool GStreamerManager::startCapture()
     startTcpServer();
 
     std::cout << "▶️ Starting pipeline...\n";
-    if (gst_element_set_state(pipeline_, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE)
+    GstStateChangeReturn sc_ret = gst_element_set_state(pipeline_, GST_STATE_PLAYING);
+    switch (sc_ret)
     {
+    case GST_STATE_CHANGE_FAILURE:
         error("Failed to start pipeline");
         return false;
+    case GST_STATE_CHANGE_SUCCESS:
+        std::cout << "  Pipeline PLAYING (sincrono)\n";
+        break;
+    case GST_STATE_CHANGE_ASYNC:
+        std::cout << "  Pipeline PLAYING pendiente (async, normal para live source)\n";
+        break;
+    case GST_STATE_CHANGE_NO_PREROLL:
+        std::cout << "  Pipeline NO_PREROLL (live source OK)\n";
+        break;
     }
 
     is_capturing_ = true;
@@ -538,6 +557,20 @@ void GStreamerManager::watchdogLoop()
             continue;
 
         last_cycle = now;
+
+        // Si el pipeline aún no llegó a PLAYING (async pendiente), empujarlo —
+        // no tiene sentido ciclar pipewiresrc si el padre está en PAUSED.
+        GstState pstate = GST_STATE_NULL;
+        gst_element_get_state(pipeline_, &pstate, nullptr, 0); // non-blocking
+        if (pstate != GST_STATE_PLAYING)
+        {
+            std::cout << "⏸️ Watchdog: pipeline en "
+                      << gst_element_state_get_name(pstate)
+                      << ", forzando PLAYING\n";
+            gst_element_set_state(pipeline_, GST_STATE_PLAYING);
+            continue;
+        }
+
         std::cout << "⏸️ Watchdog: stall, ciclando pipewiresrc\n";
 
         gst_element_set_locked_state(pipewiresrc_, TRUE);
