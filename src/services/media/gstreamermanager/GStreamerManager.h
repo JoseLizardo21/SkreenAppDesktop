@@ -72,7 +72,7 @@ private:
 
     // Force-IDR al reanudar: detecta gaps en el stream y fuerza un keyframe limpio
     std::chrono::steady_clock::time_point last_frame_time_;
-    static constexpr auto kStallThreshold = std::chrono::milliseconds(66); // 2 frames a 30fps
+    static constexpr auto kStallThreshold = std::chrono::milliseconds(2000); // stall real, no gaps normales por pantalla estática
 
     void forceKeyframe();
 

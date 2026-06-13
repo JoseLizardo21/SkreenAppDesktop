@@ -545,7 +545,7 @@ void GStreamerManager::watchdogLoop()
         // Cooldown: ciclar como máximo una vez por segundo mientras haya stall.
         // Cada ciclo fuerza al compositor a entregar el frame actual de pantalla,
         // evitando que el usuario tenga que mover el mouse tras cambiar de ventana.
-        if ((now - last_cycle) < std::chrono::milliseconds(50))
+        if ((now - last_cycle) < std::chrono::milliseconds(1000))
             continue;
 
         last_cycle = now;
