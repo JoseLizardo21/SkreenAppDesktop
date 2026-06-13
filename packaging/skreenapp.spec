@@ -22,7 +22,6 @@ Requires:       gstreamer1-plugins-ugly
 Requires:       gstreamer1-plugins-bad-free
 Requires:       gstreamer1-vaapi
 Requires:       firewalld
-Requires:       polkit
 Requires:       android-tools
 
 %description
@@ -50,24 +49,32 @@ install -Dm644 src/assets/logo-removebg-preview.png \
 install -Dm644 packaging/skreenapp.desktop \
     %{buildroot}%{_datadir}/applications/skreenapp.desktop
 
-install -Dm644 polkit/com.skreenapp.firewall.policy \
-    %{buildroot}%{_datadir}/polkit-1/actions/com.skreenapp.firewall.policy
-
-install -Dm755 scripts/skreenapp-firewall-helper \
-    %{buildroot}/usr/local/lib/skreenapp/skreenapp-firewall-helper
-
 %post
 update-desktop-database %{_datadir}/applications &>/dev/null || :
 
+if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+    firewall-cmd --permanent --add-port=9002/tcp --zone=public
+    firewall-cmd --permanent --add-port=9003/tcp --zone=public
+    firewall-cmd --permanent --add-port=9004/tcp --zone=public
+    firewall-cmd --reload
+fi
+
 %postun
 update-desktop-database %{_datadir}/applications &>/dev/null || :
+
+if [ "$1" -eq 0 ]; then
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+        firewall-cmd --permanent --remove-port=9002/tcp --zone=public
+        firewall-cmd --permanent --remove-port=9003/tcp --zone=public
+        firewall-cmd --permanent --remove-port=9004/tcp --zone=public
+        firewall-cmd --reload
+    fi
+fi
 
 %files
 %{_bindir}/skreen_desktop
 %{_datadir}/pixmaps/skreenapp.png
 %{_datadir}/applications/skreenapp.desktop
-%{_datadir}/polkit-1/actions/com.skreenapp.firewall.policy
-/usr/local/lib/skreenapp/skreenapp-firewall-helper
 
 %changelog
 * Tue May 27 2026 Lizardo <jose.212002lizardo@gmail.com> - 0.1.0-1

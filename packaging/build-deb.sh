@@ -38,12 +38,6 @@ install -Dm644 "$PROJ_DIR/src/assets/logo-removebg-preview.png" \
 install -Dm644 "$PROJ_DIR/packaging/skreenapp.desktop" \
     "$PKG_DIR/usr/share/applications/skreenapp.desktop"
 
-install -Dm644 "$PROJ_DIR/polkit/com.skreenapp.firewall.policy" \
-    "$PKG_DIR/usr/share/polkit-1/actions/com.skreenapp.firewall.policy"
-
-install -Dm755 "$PROJ_DIR/scripts/skreenapp-firewall-helper" \
-    "$PKG_DIR/usr/local/lib/skreenapp/skreenapp-firewall-helper"
-
 echo "==> Creating DEBIAN metadata..."
 mkdir -p "$PKG_DIR/DEBIAN"
 
@@ -52,7 +46,7 @@ Package: $NAME
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Lizardo <jose.212002lizardo@gmail.com>
-Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-vaapi, firewalld, polkitd, adb
+Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-vaapi, firewalld, adb
 Description: Desktop app for screen streaming to mobile via SkreenApp
  SkreenApp Desktop allows you to stream your desktop screen to a mobile
  device using the SkreenApp mobile application.
@@ -61,12 +55,28 @@ EOF
 cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 update-desktop-database /usr/share/applications 2>/dev/null || true
+
+if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+    firewall-cmd --permanent --add-port=9002/tcp --zone=public
+    firewall-cmd --permanent --add-port=9003/tcp --zone=public
+    firewall-cmd --permanent --add-port=9004/tcp --zone=public
+    firewall-cmd --reload
+fi
 EOF
 chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
 cat > "$PKG_DIR/DEBIAN/postrm" <<'EOF'
 #!/bin/sh
 update-desktop-database /usr/share/applications 2>/dev/null || true
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+        firewall-cmd --permanent --remove-port=9002/tcp --zone=public
+        firewall-cmd --permanent --remove-port=9003/tcp --zone=public
+        firewall-cmd --permanent --remove-port=9004/tcp --zone=public
+        firewall-cmd --reload
+    fi
+fi
 EOF
 chmod 755 "$PKG_DIR/DEBIAN/postrm"
 

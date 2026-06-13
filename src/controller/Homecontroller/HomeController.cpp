@@ -4,34 +4,7 @@
 #include "../../services/system/portalmanager/PortalManager.h"
 #include <memory>
 #include <iostream>
-#include <cstdlib>
 #include <glib.h>
-
-static bool firewalld_port_opened = false;
-
-static bool isFirewalldActive() {
-    return std::system("systemctl is-active --quiet firewalld 2>/dev/null") == 0;
-}
-
-static void openFirewallPort() {
-    if (!isFirewalldActive()) return;
-    if (std::system("firewall-cmd --query-port=9002/tcp --zone=public -q 2>/dev/null") == 0 &&
-        std::system("firewall-cmd --query-port=9003/tcp --zone=public -q 2>/dev/null") == 0 &&
-        std::system("firewall-cmd --query-port=9004/tcp --zone=public -q 2>/dev/null") == 0) return;
-    if (std::system("pkexec /usr/local/lib/skreenapp/skreenapp-firewall-helper open 2>/dev/null") == 0) {
-        firewalld_port_opened = true;
-        std::cout << "Ports 9002, 9003, 9004 opened in firewalld\n";
-    }
-}
-
-static void closeFirewallPort() {
-    // Runtime rules (no --permanent) disappear on firewalld restart or reboot,
-    // so closing actively is not required and avoids an extra pkexec dialog.
-    if (!firewalld_port_opened) return;
-    std::system("firewall-cmd --remove-port=9002/tcp --remove-port=9003/tcp --remove-port=9004/tcp --zone=public -q 2>/dev/null");
-    firewalld_port_opened = false;
-    std::cout << "Ports 9002, 9003, 9004 closed in firewalld\n";
-}
 
 HomeController::HomeController(Home* home)
     : view_(home) {
@@ -72,19 +45,10 @@ HomeController::HomeController(Home* home)
 
 HomeController::~HomeController() {
     if (stop_thread_.joinable()) stop_thread_.join();
-    closeFirewallPort();
 }
 
 void HomeController::handleRequestPermissions() {
-    // Run pkexec off the GTK main thread to avoid freezing the UI
-    std::thread([this]() {
-        openFirewallPort();
-        g_idle_add([](gpointer data) -> gboolean {
-            auto* self = static_cast<HomeController*>(data);
-            if (self->portal_manager_) self->portal_manager_->startAsync();
-            return G_SOURCE_REMOVE;
-        }, this);
-    }).detach();
+    if (portal_manager_) portal_manager_->startAsync();
 }
 
 void HomeController::onPortalComplete(const std::string& session_handle,
