@@ -46,7 +46,7 @@ Package: $NAME
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Lizardo <jose.212002lizardo@gmail.com>
-Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-vaapi, firewalld, adb
+Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-vaapi, adb
 Description: Desktop app for screen streaming to mobile via SkreenApp
  SkreenApp Desktop allows you to stream your desktop screen to a mobile
  device using the SkreenApp mobile application.
@@ -55,28 +55,12 @@ EOF
 cat > "$PKG_DIR/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 update-desktop-database /usr/share/applications 2>/dev/null || true
-
-if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
-    firewall-cmd --permanent --add-port=9002/tcp --zone=public
-    firewall-cmd --permanent --add-port=9003/tcp --zone=public
-    firewall-cmd --permanent --add-port=9004/tcp --zone=public
-    firewall-cmd --reload
-fi
 EOF
 chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
 cat > "$PKG_DIR/DEBIAN/postrm" <<'EOF'
 #!/bin/sh
 update-desktop-database /usr/share/applications 2>/dev/null || true
-
-if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
-        firewall-cmd --permanent --remove-port=9002/tcp --zone=public
-        firewall-cmd --permanent --remove-port=9003/tcp --zone=public
-        firewall-cmd --permanent --remove-port=9004/tcp --zone=public
-        firewall-cmd --reload
-    fi
-fi
 EOF
 chmod 755 "$PKG_DIR/DEBIAN/postrm"
 

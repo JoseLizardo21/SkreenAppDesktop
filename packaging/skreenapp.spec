@@ -21,7 +21,6 @@ Requires:       gstreamer1-plugins-base
 Requires:       gstreamer1-plugins-ugly
 Requires:       gstreamer1-plugins-bad-free
 Requires:       gstreamer1-vaapi
-Requires:       firewalld
 Requires:       android-tools
 
 %description
@@ -52,24 +51,8 @@ install -Dm644 packaging/skreenapp.desktop \
 %post
 update-desktop-database %{_datadir}/applications &>/dev/null || :
 
-if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
-    firewall-cmd --permanent --add-port=9002/tcp --zone=public
-    firewall-cmd --permanent --add-port=9003/tcp --zone=public
-    firewall-cmd --permanent --add-port=9004/tcp --zone=public
-    firewall-cmd --reload
-fi
-
 %postun
 update-desktop-database %{_datadir}/applications &>/dev/null || :
-
-if [ "$1" -eq 0 ]; then
-    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
-        firewall-cmd --permanent --remove-port=9002/tcp --zone=public
-        firewall-cmd --permanent --remove-port=9003/tcp --zone=public
-        firewall-cmd --permanent --remove-port=9004/tcp --zone=public
-        firewall-cmd --reload
-    fi
-fi
 
 %files
 %{_bindir}/skreen_desktop
