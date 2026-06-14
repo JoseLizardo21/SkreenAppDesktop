@@ -5,6 +5,9 @@
 #include <memory>
 #include <iostream>
 #include <glib.h>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 HomeController::HomeController(Home* home)
     : view_(home) {
@@ -71,9 +74,49 @@ void HomeController::onPortalComplete(const std::string& session_handle,
     notify_server_ = std::make_unique<NotifyServer>();
     notify_server_->start();
 
+    webrtc_signaling_ = std::make_unique<WebRtcSignaling>();
+    auto* ws = webrtc_signaling_.get();
+    auto* gm = gstreamer_manager_.get();
+
+    gstreamer_manager_->setOnLocalDescription([ws](const std::string& sdp) {
+        json j;
+        j["type"] = "offer";
+        j["sdp"] = sdp;
+        ws->send(j.dump() + "\n");
+    });
+
+    gstreamer_manager_->setOnIceCandidate([ws](guint mlineindex, const std::string& candidate) {
+        json j;
+        j["type"] = "ice";
+        j["candidate"] = candidate;
+        j["sdpMLineIndex"] = mlineindex;
+        ws->send(j.dump() + "\n");
+    });
+
+    webrtc_signaling_->setOnClientConnected([gm]() {
+        gm->createOffer();
+    });
+
+    webrtc_signaling_->setOnMessage([gm](const std::string& line) {
+        try {
+            json j = json::parse(line);
+            std::string type = j.value("type", "");
+            if (type == "answer") {
+                gm->setRemoteDescription(j.value("sdp", ""));
+            } else if (type == "ice") {
+                guint mline = j.value("sdpMLineIndex", 0);
+                std::string candidate = j.value("candidate", "");
+                gm->addIceCandidate(mline, candidate);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[WebRtcSignaling] Invalid message: " << e.what() << "\n";
+        }
+    });
+
+    webrtc_signaling_->start();
+
     input_server_ = std::make_unique<InputServer>();
     auto* pm = portal_manager_.get();
-    auto* gm = gstreamer_manager_.get();
 
     // Touch state: 0=idle, 1=down(potential tap), 2=dragging
     struct TouchCtx { int state{0}; float sx{}, sy{}; };
@@ -122,10 +165,11 @@ void HomeController::onPortalComplete(const std::string& session_handle,
             return G_SOURCE_REMOVE;
         }, v);
     }
-    std::cout << "Streaming TCP en puerto 9002\n";
+    std::cout << "WebRTC signaling TCP en puerto 9002\n";
     std::cout << "Input control TCP en puerto 9003\n";
     std::cout << "Notify TCP en puerto 9004\n";
-    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003 && adb reverse tcp:9004 tcp:9004\n";
+    std::cout << "WebRTC media (ICE-TCP) en puerto 9006\n";
+    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003 && adb reverse tcp:9004 tcp:9004 && adb reverse tcp:9006 tcp:9006\n";
 }
 
 void HomeController::onGStreamerError(const std::string& error) {
@@ -165,6 +209,7 @@ void HomeController::handleStopCapture() {
     if (stop_thread_.joinable()) stop_thread_.join();
     stop_thread_ = std::thread([this]() {
         if (notify_server_) { notify_server_->send("{\"type\":\"stream_stopped\"}\n"); notify_server_->stop(); notify_server_.reset(); }
+        if (webrtc_signaling_) { webrtc_signaling_->stop(); webrtc_signaling_.reset(); }
         if (input_server_) { input_server_->stop(); input_server_.reset(); }
         if (gstreamer_manager_) gstreamer_manager_->stopCapture();
         if (portal_manager_) portal_manager_->stop();

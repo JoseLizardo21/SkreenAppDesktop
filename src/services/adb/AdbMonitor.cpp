@@ -58,6 +58,7 @@ void AdbMonitor::setupReversePorts() {
     std::system("adb reverse tcp:9002 tcp:9002 2>/dev/null");
     std::system("adb reverse tcp:9003 tcp:9003 2>/dev/null");
     std::system("adb reverse tcp:9004 tcp:9004 2>/dev/null");
+    std::system("adb reverse tcp:9006 tcp:9006 2>/dev/null");
 }
 
 void AdbMonitor::pollLoop() {

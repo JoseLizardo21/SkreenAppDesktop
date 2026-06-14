@@ -34,7 +34,10 @@ pkg_check_modules(GSTREAMER REQUIRED
     gstreamer-1.0
     gstreamer-app-1.0
     gstreamer-video-1.0
+    gstreamer-webrtc-1.0
+    gstreamer-sdp-1.0
 )
+pkg_check_modules(NICE REQUIRED nice)
 pkg_check_modules(DBUS REQUIRED dbus-1)
 
 # ========== Threads ==========
@@ -47,6 +50,7 @@ include_directories(
     ${CMAKE_BINARY_DIR}
     ${GTK_INCLUDE_DIRS}
     ${GSTREAMER_INCLUDE_DIRS}
+    ${NICE_INCLUDE_DIRS}
     ${DBUS_INCLUDE_DIRS}
 )
 
@@ -54,12 +58,14 @@ include_directories(
 link_directories(
     ${GTK_LIBRARY_DIRS}
     ${GSTREAMER_LIBRARY_DIRS}
+    ${NICE_LIBRARY_DIRS}
 )
 
 # ========== Definiciones adicionales ==========
 add_definitions(
     ${GTK_CFLAGS_OTHER}
     ${GSTREAMER_CFLAGS_OTHER}
+    ${NICE_CFLAGS_OTHER}
 )
 
 # ========== Añadir subdirectorios ==========
@@ -80,6 +86,7 @@ target_link_libraries(skreen_desktop
     config_manager
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
+    ${NICE_LIBRARIES}
     ${DBUS_LIBRARIES}
     Threads::Threads
 )

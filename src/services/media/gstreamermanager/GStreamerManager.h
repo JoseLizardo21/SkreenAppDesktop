@@ -2,13 +2,10 @@
 #define GSTREAMER_MANAGER_H
 
 #include <gst/gst.h>
-#include <gst/app/gstappsink.h>
 #include <functional>
 #include <cstdint>
 #include <string>
 #include <thread>
-#include <mutex>
-#include <vector>
 #include <atomic>
 #include <chrono>
 #include "config/StreamConfig.h"
@@ -16,6 +13,8 @@
 class GStreamerManager {
 public:
     using ErrorCallback = std::function<void(const std::string&)>;
+    using LocalDescriptionCallback = std::function<void(const std::string& sdp)>;
+    using IceCandidateCallback = std::function<void(guint mlineindex, const std::string& candidate)>;
 
     GStreamerManager();
     ~GStreamerManager();
@@ -33,7 +32,17 @@ public:
     int getStreamWidth() const { return stream_w_; }
     int getStreamHeight() const { return stream_h_; }
 
+    // WebRTC signaling: usado por WebRtcSignaling para negociar SDP/ICE con el cliente
+    void setOnLocalDescription(LocalDescriptionCallback callback) { on_local_description_ = callback; }
+    void setOnIceCandidate(IceCandidateCallback callback) { on_ice_candidate_ = callback; }
+    void createOffer();
+    void setRemoteDescription(const std::string& sdp);
+    void addIceCandidate(guint mlineindex, const std::string& candidate);
+
 private:
+    // Puerto fijo de ICE-TCP para el medio WebRTC (adb reverse tcp:9006 tcp:9006)
+    static constexpr guint kIceTcpPort = 9006;
+
     // Pipeline elements
     GstElement* pipeline_{nullptr};
     GstElement* pipewiresrc_{nullptr};
@@ -41,7 +50,8 @@ private:
     GstElement* videoconvert_{nullptr};
     GstElement* encoder_{nullptr};
     GstElement* h264parse_{nullptr};
-    GstElement* appsink_{nullptr};
+    GstElement* rtph264pay_{nullptr};
+    GstElement* webrtcbin_{nullptr};
 
     std::string encoder_name_;
     StreamConfig config_;
@@ -55,20 +65,8 @@ private:
     bool stream_size_known_{false};
 
     ErrorCallback error_callback_;
-
-    // TCP server raw (sin GDP)
-    int server_fd_{-1};
-    std::vector<int> client_fds_;
-    std::mutex clients_mutex_;
-    std::thread accept_thread_;
-    std::atomic<bool> server_running_{false};
-    uint64_t bytes_sent_total_{0};
-    uint64_t frames_sent_{0};
-
-    void startTcpServer();
-    void stopTcpServer();
-    void acceptLoop();
-    void sendToClients(const uint8_t* data, gsize size);
+    LocalDescriptionCallback on_local_description_;
+    IceCandidateCallback on_ice_candidate_;
 
     // Force-IDR al reanudar: detecta gaps en el stream y fuerza un keyframe limpio
     std::chrono::steady_clock::time_point last_frame_time_;
@@ -87,8 +85,11 @@ private:
     bool linkElements();
     bool setupBusHandler();
 
-    static GstFlowReturn onNewSample(GstElement* appsink, gpointer user_data);
     static GstBusSyncReply onBusMessage(GstBus* bus, GstMessage* message, gpointer data);
+    static GstPadProbeReturn onCapsProbe(GstPad* pad, GstPadProbeInfo* info, gpointer user_data);
+    static GstPadProbeReturn onPayloaderBuffer(GstPad* pad, GstPadProbeInfo* info, gpointer user_data);
+    static void onOfferCreated(GstPromise* promise, gpointer user_data);
+    static void onIceCandidateCb(GstElement* webrtcbin, guint mlineindex, gchar* candidate, gpointer user_data);
 
     void cleanup();
     void error(const std::string& message);

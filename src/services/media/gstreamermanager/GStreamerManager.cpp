@@ -1,14 +1,10 @@
 #include "GStreamerManager.h"
 #include <gst/video/video.h>
+#define GST_USE_UNSTABLE_API
+#include <gst/webrtc/webrtc.h>
+#include <gst/sdp/sdp.h>
 #include <iostream>
-#include <cstring>
 #include <string>
-#include <algorithm>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 
 GStreamerManager::GStreamerManager() {}
 
@@ -63,7 +59,8 @@ bool GStreamerManager::createElements()
     queue_main_ = gst_element_factory_make("queue", "queue_main");
     videoconvert_ = gst_element_factory_make("videoconvert", "convert");
     h264parse_ = gst_element_factory_make("h264parse", "parser");
-    appsink_ = gst_element_factory_make("appsink", "sink");
+    rtph264pay_ = gst_element_factory_make("rtph264pay", "pay");
+    webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtcbin");
 
     // Encoder: HW primero, SW fallback
     struct Candidate
@@ -145,13 +142,13 @@ bool GStreamerManager::createElements()
     }
 
     if (!pipewiresrc_ || !queue_main_ || !videoconvert_ ||
-        !encoder_ || !h264parse_ || !appsink_)
+        !encoder_ || !h264parse_ || !rtph264pay_ || !webrtcbin_)
     {
         error("Failed to create one or more elements");
         if (!encoder_)
             std::cerr << "  ❌ No H.264 encoder available\n";
-        if (!appsink_)
-            std::cerr << "  ❌ appsink not available\n";
+        if (!webrtcbin_)
+            std::cerr << "  ❌ webrtcbin not available\n";
         return false;
     }
 
@@ -160,20 +157,41 @@ bool GStreamerManager::createElements()
                  "max-size-buffers", 1, "max-size-bytes", 0,
                  "max-size-time", 0, "leaky", 2, NULL);
 
-    // h264parse: SPS/PPS antes de cada IDR, formato Annex-B para MediaCodec
+    // h264parse: SPS/PPS antes de cada IDR
     g_object_set(G_OBJECT(h264parse_),
                  "config-interval", -1,
                  "disable-passthrough", TRUE,
                  NULL);
 
-    // appsink: sin sync, emit-signals para callback por cada buffer
-    g_object_set(G_OBJECT(appsink_),
-                 "emit-signals", TRUE,
-                 "sync", FALSE,
-                 "max-buffers", 1,
-                 "drop", TRUE,
+    // rtph264pay: repite SPS/PPS en cada IDR para que un cliente que se conecta
+    // a mitad de stream pueda decodificar desde el primer keyframe
+    g_object_set(G_OBJECT(rtph264pay_),
+                 "config-interval", -1,
+                 "pt", 96,
                  NULL);
-    g_signal_connect(appsink_, "new-sample", G_CALLBACK(onNewSample), this);
+
+    // webrtcbin: un solo m-line de video, sin STUN/TURN (todo es loopback vía adb)
+    g_object_set(G_OBJECT(webrtcbin_),
+                 "bundle-policy", 3 /* GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE */,
+                 NULL);
+
+    // Forzar ICE-TCP: adb reverse/forward solo tunelizan TCP, no UDP. Se desactiva
+    // la recolección de candidatos UDP y se fija el puerto TCP a kIceTcpPort para
+    // poder reenviarlo con un único "adb reverse tcp:9006 tcp:9006".
+    GObject *ice_agent = nullptr;
+    g_object_get(G_OBJECT(webrtcbin_), "ice-agent", &ice_agent, NULL);
+    if (ice_agent)
+    {
+        g_object_set(ice_agent,
+                     "ice-udp", FALSE,
+                     "ice-tcp", TRUE,
+                     "min-rtp-port", kIceTcpPort,
+                     "max-rtp-port", kIceTcpPort,
+                     NULL);
+        g_object_unref(ice_agent);
+    }
+
+    g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
 
     std::cout << "  ✓ All elements created\n";
     return true;
@@ -216,18 +234,58 @@ bool GStreamerManager::linkElements()
     g_object_set(G_OBJECT(h264out), "caps", sink_caps, NULL);
     gst_caps_unref(sink_caps);
 
+    // Capsfilter de salida del payloader: caps RTP explícitos para el sink_%u de webrtcbin
+    GstElement *rtp_out = gst_element_factory_make("capsfilter", "rtp_out");
+    GstCaps *rtp_caps = gst_caps_new_simple("application/x-rtp",
+                                            "media", G_TYPE_STRING, "video",
+                                            "encoding-name", G_TYPE_STRING, "H264",
+                                            "payload", G_TYPE_INT, 96,
+                                            "clock-rate", G_TYPE_INT, 90000,
+                                            NULL);
+    g_object_set(G_OBJECT(rtp_out), "caps", rtp_caps, NULL);
+    gst_caps_unref(rtp_caps);
+
     gst_bin_add_many(GST_BIN(pipeline_),
                      pipewiresrc_, queue_main_, videoconvert_,
-                     enc_in, encoder_, h264parse_, h264out, appsink_,
+                     enc_in, encoder_, h264parse_, h264out,
+                     rtph264pay_, rtp_out, webrtcbin_,
                      NULL);
 
     if (!gst_element_link_many(pipewiresrc_, queue_main_, videoconvert_,
-                               enc_in, encoder_, h264parse_, h264out, appsink_,
+                               enc_in, encoder_, h264parse_, h264out,
+                               rtph264pay_, rtp_out,
                                NULL))
     {
         error("Failed to link pipeline elements");
         return false;
     }
+
+    // rtp_out -> webrtcbin (pad de petición: crea un transceiver de video sendonly)
+    GstPad *rtp_src = gst_element_get_static_pad(rtp_out, "src");
+    GstPad *webrtc_sink = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
+    if (!rtp_src || !webrtc_sink || gst_pad_link(rtp_src, webrtc_sink) != GST_PAD_LINK_OK)
+    {
+        error("Failed to link rtph264pay to webrtcbin");
+        if (rtp_src)
+            gst_object_unref(rtp_src);
+        if (webrtc_sink)
+            gst_object_unref(webrtc_sink);
+        return false;
+    }
+    gst_object_unref(rtp_src);
+    gst_object_unref(webrtc_sink);
+
+    // Lee width/height reales del stream codificado (para mapear coordenadas de touch)
+    GstPad *parse_src = gst_element_get_static_pad(h264parse_, "src");
+    gst_pad_add_probe(parse_src, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM,
+                      onCapsProbe, this, NULL);
+    gst_object_unref(parse_src);
+
+    // Marca de actividad para el watchdog de stall (forceKeyframe tras reanudar)
+    GstPad *pay_sink = gst_element_get_static_pad(rtph264pay_, "sink");
+    gst_pad_add_probe(pay_sink, GST_PAD_PROBE_TYPE_BUFFER,
+                      onPayloaderBuffer, this, NULL);
+    gst_object_unref(pay_sink);
 
     std::cout << "  ✓ Pipeline linked\n";
     return true;
@@ -247,204 +305,111 @@ bool GStreamerManager::setupBusHandler()
     return true;
 }
 
+GstPadProbeReturn GStreamerManager::onCapsProbe(GstPad *pad, GstPadProbeInfo *info, gpointer user_data)
+{
+    (void)pad;
+    auto *self = static_cast<GStreamerManager *>(user_data);
+    if (self->stream_size_known_)
+        return GST_PAD_PROBE_OK;
+
+    GstEvent *event = GST_PAD_PROBE_INFO_EVENT(info);
+    if (GST_EVENT_TYPE(event) != GST_EVENT_CAPS)
+        return GST_PAD_PROBE_OK;
+
+    GstCaps *caps;
+    gst_event_parse_caps(event, &caps);
+    GstStructure *s = gst_caps_get_structure(caps, 0);
+    int w = 0, h = 0;
+    if (gst_structure_get_int(s, "width", &w) && gst_structure_get_int(s, "height", &h) && w > 0 && h > 0)
+    {
+        self->stream_w_ = w;
+        self->stream_h_ = h;
+        self->stream_size_known_ = true;
+        std::cout << "Stream size: " << w << "x" << h << "\n";
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+GstPadProbeReturn GStreamerManager::onPayloaderBuffer(GstPad *pad, GstPadProbeInfo *info, gpointer user_data)
+{
+    (void)pad;
+    (void)info;
+    auto *self = static_cast<GStreamerManager *>(user_data);
+
+    auto now = std::chrono::steady_clock::now();
+    bool was_stalled = (now - self->last_frame_time_) >= kStallThreshold;
+    self->last_frame_time_ = now;
+
+    // Si el pipeline estuvo parado (PipeWire inactivo), forzar IDR inmediato
+    // para que el cliente reciba un frame limpio sin artefactos de referencia
+    if (was_stalled)
+        self->forceKeyframe();
+
+    return GST_PAD_PROBE_OK;
+}
+
 // ============================================================
-// TCP server raw (sin GDP)
+// Señalización WebRTC
 // ============================================================
 
-void GStreamerManager::startTcpServer()
+void GStreamerManager::createOffer()
 {
-    server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd_ < 0)
-    {
-        std::cerr << "❌ No se pudo crear socket TCP\n";
+    if (!webrtcbin_)
         return;
-    }
-
-    int opt = 1;
-    setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    struct sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(9002);
-
-    if (bind(server_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
-        std::cerr << "❌ bind() falló en puerto 9002\n";
-        close(server_fd_);
-        server_fd_ = -1;
-        return;
-    }
-
-    listen(server_fd_, 5);
-    server_running_ = true;
-    accept_thread_ = std::thread(&GStreamerManager::acceptLoop, this);
-    std::cout << "🌐 TCP server escuchando en puerto 9002\n";
+    GstPromise *promise = gst_promise_new_with_change_func(onOfferCreated, this, NULL);
+    g_signal_emit_by_name(webrtcbin_, "create-offer", NULL, promise);
 }
 
-void GStreamerManager::stopTcpServer()
-{
-    server_running_ = false;
-    if (server_fd_ >= 0)
-    {
-        shutdown(server_fd_, SHUT_RDWR);
-        close(server_fd_);
-        server_fd_ = -1;
-    }
-    if (accept_thread_.joinable())
-        accept_thread_.join();
-
-    std::lock_guard<std::mutex> lock(clients_mutex_);
-    std::cout << "🔌 Cerrando " << client_fds_.size() << " cliente(s) activo(s)\n";
-    for (int fd : client_fds_)
-        close(fd);
-    client_fds_.clear();
-    bytes_sent_total_ = 0;
-    frames_sent_ = 0;
-}
-
-void GStreamerManager::acceptLoop()
-{
-    std::cout << "🔁 acceptLoop iniciado, esperando conexiones...\n";
-    while (server_running_)
-    {
-        struct sockaddr_in client_addr{};
-        socklen_t len = sizeof(client_addr);
-        int client_fd = accept(server_fd_, (struct sockaddr *)&client_addr, &len);
-        if (client_fd < 0)
-        {
-            if (server_running_)
-                std::cerr << "⚠️  accept() error: " << strerror(errno) << "\n";
-            break;
-        }
-
-        char ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &client_addr.sin_addr, ip, sizeof(ip));
-        uint16_t port = ntohs(client_addr.sin_port);
-
-        int flag = 1;
-        setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
-
-        // Buffer suficiente para IDR frames del HW encoder sin corrupción
-        int sndbuf = 262144;
-        setsockopt(client_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
-
-        std::lock_guard<std::mutex> lock(clients_mutex_);
-        client_fds_.push_back(client_fd);
-        std::cout << "📱 Cliente conectado  ip=" << ip << ":" << port
-                  << "  fd=" << client_fd
-                  << "  total=" << client_fds_.size() << "\n";
-    }
-    std::cout << "🔁 acceptLoop terminado\n";
-}
-
-void GStreamerManager::sendToClients(const uint8_t *data, gsize size)
-{
-    std::lock_guard<std::mutex> lock(clients_mutex_);
-
-    if (client_fds_.empty())
-        return;
-
-    std::vector<int> to_remove;
-
-    // Prefijo de 4 bytes (big-endian) con el tamaño del frame H.264
-    uint8_t len_prefix[4] = {
-        static_cast<uint8_t>((size >> 24) & 0xFF),
-        static_cast<uint8_t>((size >> 16) & 0xFF),
-        static_cast<uint8_t>((size >> 8) & 0xFF),
-        static_cast<uint8_t>(size & 0xFF),
-    };
-
-    for (int fd : client_fds_)
-    {
-        send(fd, len_prefix, 4, MSG_NOSIGNAL);
-        ssize_t sent = send(fd, data, size, MSG_NOSIGNAL);
-        if (sent < 0)
-        {
-            std::cout << "📴 Cliente desconectado  fd=" << fd
-                      << "  error=" << strerror(errno) << "\n";
-            close(fd);
-            to_remove.push_back(fd);
-        }
-    }
-
-    for (int fd : to_remove)
-    {
-        client_fds_.erase(
-            std::remove(client_fds_.begin(), client_fds_.end(), fd),
-            client_fds_.end());
-    }
-
-    bytes_sent_total_ += size;
-
-    // Log de estadísticas cada 300 frames (~10 segundos a 30fps)
-    if (frames_sent_ % 300 == 0)
-    {
-        double mb = bytes_sent_total_ / (1024.0 * 1024.0);
-        std::cout << "📊 TCP stats  frames=" << frames_sent_
-                  << "  total=" << mb << " MB"
-                  << "  clientes=" << client_fds_.size() << "\n";
-    }
-}
-
-GstFlowReturn GStreamerManager::onNewSample(GstElement *appsink, gpointer user_data)
+void GStreamerManager::onOfferCreated(GstPromise *promise, gpointer user_data)
 {
     auto *self = static_cast<GStreamerManager *>(user_data);
 
-    GstSample *sample = gst_app_sink_pull_sample(GST_APP_SINK(appsink));
-    if (!sample)
-        return GST_FLOW_OK;
+    const GstStructure *reply = gst_promise_get_reply(promise);
+    GstWebRTCSessionDescription *offer = nullptr;
+    gst_structure_get(reply, "offer", GST_TYPE_WEBRTC_SESSION_DESCRIPTION, &offer, NULL);
+    gst_promise_unref(promise);
 
-    // Read stream dimensions from caps (only once)
-    if (!self->stream_size_known_)
-    {
-        GstCaps *caps = gst_sample_get_caps(sample);
-        if (caps)
-        {
-            GstStructure *s = gst_caps_get_structure(caps, 0);
-            int w = 0, h = 0;
-            gst_structure_get_int(s, "width", &w);
-            gst_structure_get_int(s, "height", &h);
-            if (w > 0 && h > 0)
-            {
-                self->stream_w_ = w;
-                self->stream_h_ = h;
-                self->stream_size_known_ = true;
-                std::cout << "Stream size: " << w << "x" << h << "\n";
-            }
-        }
-    }
+    if (!offer)
+        return;
 
-    GstBuffer *buffer = gst_sample_get_buffer(sample);
-    GstMapInfo map;
-    if (gst_buffer_map(buffer, &map, GST_MAP_READ))
-    {
-        // Log del primer sample (solo una vez)
-        if (self->frames_sent_++ == 0)
-        {
-            std::cout << "🎞️  Primer sample  size=" << map.size << " bytes"
-                      << "  primeros bytes: ";
-            for (gsize i = 0; i < std::min(map.size, (gsize)8); i++)
-                std::printf("%02X ", map.data[i]);
-            std::printf("\n");
-            std::cout << "   (H.264 Annex-B: primeros bytes deben ser 00 00 00 01)\n";
-        }
+    g_signal_emit_by_name(self->webrtcbin_, "set-local-description", offer, NULL);
 
-        auto now = std::chrono::steady_clock::now();
-        bool was_stalled = (now - self->last_frame_time_) >= kStallThreshold;
-        self->last_frame_time_ = now;
+    gchar *sdp_str = gst_sdp_message_as_text(offer->sdp);
+    if (self->on_local_description_)
+        self->on_local_description_(std::string(sdp_str));
+    g_free(sdp_str);
 
-        // Si el pipeline estuvo parado (PipeWire inactivo), forzar IDR inmediato
-        // para que el móvil reciba un frame limpio sin artefactos de referencia
-        if (was_stalled)
-            self->forceKeyframe();
+    gst_webrtc_session_description_free(offer);
+}
 
-        self->sendToClients(map.data, map.size);
-        gst_buffer_unmap(buffer, &map);
-    }
+void GStreamerManager::setRemoteDescription(const std::string &sdp)
+{
+    if (!webrtcbin_)
+        return;
 
-    gst_sample_unref(sample);
-    return GST_FLOW_OK;
+    GstSDPMessage *sdp_msg;
+    gst_sdp_message_new(&sdp_msg);
+    gst_sdp_message_parse_buffer(reinterpret_cast<const guint8 *>(sdp.c_str()), sdp.size(), sdp_msg);
+
+    GstWebRTCSessionDescription *answer =
+        gst_webrtc_session_description_new(GST_WEBRTC_SDP_TYPE_ANSWER, sdp_msg);
+    g_signal_emit_by_name(webrtcbin_, "set-remote-description", answer, NULL);
+    gst_webrtc_session_description_free(answer);
+}
+
+void GStreamerManager::addIceCandidate(guint mlineindex, const std::string &candidate)
+{
+    if (!webrtcbin_)
+        return;
+    g_signal_emit_by_name(webrtcbin_, "add-ice-candidate", mlineindex, candidate.c_str());
+}
+
+void GStreamerManager::onIceCandidateCb(GstElement *webrtcbin, guint mlineindex, gchar *candidate, gpointer user_data)
+{
+    (void)webrtcbin;
+    auto *self = static_cast<GStreamerManager *>(user_data);
+    if (self->on_ice_candidate_)
+        self->on_ice_candidate_(mlineindex, std::string(candidate));
 }
 
 // ============================================================
@@ -462,7 +427,6 @@ bool GStreamerManager::startCapture()
     last_frame_time_ = std::chrono::steady_clock::now();
     watchdog_running_ = true;
     watchdog_thread_ = std::thread(&GStreamerManager::watchdogLoop, this);
-    startTcpServer();
 
     std::cout << "▶️ Starting pipeline...\n";
     if (gst_element_set_state(pipeline_, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE)
@@ -472,7 +436,7 @@ bool GStreamerManager::startCapture()
     }
 
     is_capturing_ = true;
-    std::cout << "✅ Streaming on TCP port 9002\n";
+    std::cout << "✅ Streaming via WebRTC (ICE-TCP puerto " << kIceTcpPort << ")\n";
     return true;
 }
 
@@ -485,7 +449,6 @@ void GStreamerManager::stopCapture()
         watchdog_thread_.join();
     gst_element_set_state(pipeline_, GST_STATE_NULL);
     is_capturing_ = false;
-    stopTcpServer();
     std::cout << "⏹️ Pipeline stopped\n";
 }
 
@@ -529,12 +492,12 @@ GstBusSyncReply GStreamerManager::onBusMessage(GstBus *bus, GstMessage *message,
 
 void GStreamerManager::watchdogLoop()
 {
-    auto last_cycle = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+    auto last_log = std::chrono::steady_clock::now() - std::chrono::seconds(10);
 
     while (watchdog_running_)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~1 frame a 60fps
-        if (!is_capturing_ || !pipewiresrc_)
+        if (!is_capturing_)
             continue;
 
         auto now = std::chrono::steady_clock::now();
@@ -542,19 +505,15 @@ void GStreamerManager::watchdogLoop()
         if ((now - last_frame_time_) < kStallThreshold)
             continue;
 
-        // Cooldown: ciclar como máximo una vez por segundo mientras haya stall.
-        // Cada ciclo fuerza al compositor a entregar el frame actual de pantalla,
-        // evitando que el usuario tenga que mover el mouse tras cambiar de ventana.
-        if ((now - last_cycle) < std::chrono::milliseconds(1000))
-            continue;
-
-        last_cycle = now;
-        std::cout << "⏸️ Watchdog: stall, ciclando pipewiresrc\n";
-
-        gst_element_set_locked_state(pipewiresrc_, TRUE);
-        gst_element_set_state(pipewiresrc_, GST_STATE_PAUSED);
-        gst_element_set_state(pipewiresrc_, GST_STATE_PLAYING);
-        gst_element_set_locked_state(pipewiresrc_, FALSE);
+        // Pantalla estática: pipewiresrc no entrega frames nuevos. No es un error
+        // (WebRTC simplemente no envía nada hasta que cambie la imagen); solo lo
+        // registramos, sin tocar el estado de pipewiresrc (eso rompía la
+        // renegociación de caps con el nuevo tail rtph264pay/webrtcbin).
+        if ((now - last_log) >= std::chrono::milliseconds(1000))
+        {
+            last_log = now;
+            std::cout << "⏸️ Watchdog: stall (pantalla estática)\n";
+        }
     }
 }
 
@@ -581,7 +540,7 @@ void GStreamerManager::cleanup()
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
         pipewiresrc_ = queue_main_ = videoconvert_ = nullptr;
-        encoder_ = h264parse_ = appsink_ = nullptr;
+        encoder_ = h264parse_ = rtph264pay_ = webrtcbin_ = nullptr;
     }
 }
 

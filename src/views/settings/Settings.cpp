@@ -189,7 +189,7 @@ Settings::Settings(GtkWindow* parent, const StreamConfig& current) {
 
     g_signal_connect(reset_btn, "clicked", G_CALLBACK(+[](GtkButton*, gpointer data) {
         auto* self = static_cast<Settings*>(data);
-        gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_bitrate_),  10000);
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_bitrate_),  4000);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_keyframe_), 30);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(self->spin_speed_),    7);
     }), this);
