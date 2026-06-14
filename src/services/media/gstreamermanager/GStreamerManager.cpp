@@ -89,6 +89,7 @@ bool GStreamerManager::createElements()
 
         if (name == "vah264enc")
         {
+            std::cout << "  Hereeeeeee1" << "\n";
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", config_.bitrate,
                          "key-int-max", config_.keyframe_interval,
@@ -101,14 +102,21 @@ bool GStreamerManager::createElements()
         }
         else if (name == "vaapih264enc")
         {
+            std::cout << "  Hereeeeeee2" << "\n";
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", config_.bitrate,
                          "keyframe-period", config_.keyframe_interval,
                          "quality-level", config_.encoder_speed,
+                         "max-bframes", 0,
                          NULL);
+
+            // CBR vía nick de string: evita depender de valores numéricos del
+            // enum, que varían entre versiones del plugin gstreamer-vaapi.
+            gst_util_set_object_arg(G_OBJECT(encoder_), "rate-control", "cbr");
         }
         else if (name == "nvh264enc")
         {
+            std::cout << "  Hereeeeeee3" << "\n";
             g_object_set(G_OBJECT(encoder_),
                          "bitrate", config_.bitrate,
                          "preset", 6,
@@ -118,6 +126,7 @@ bool GStreamerManager::createElements()
         }
         else if (name == "x264enc")
         {
+            std::cout << "  Hereeeeeee4" << "\n";
             g_object_set(G_OBJECT(encoder_),
                          "tune", 0x00000004,
                          "speed-preset", 1,
@@ -132,6 +141,7 @@ bool GStreamerManager::createElements()
         }
         else if (name == "openh264enc")
         {
+            std::cout << "  Hereeeeeee5" << "\n";
             int complexity = (config_.encoder_speed <= 3) ? 2 : (config_.encoder_speed <= 6) ? 1
                                                                                              : 0;
             g_object_set(G_OBJECT(encoder_),
@@ -230,6 +240,33 @@ bool GStreamerManager::linkElements()
 
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
+    // Capsfilter post-pipewiresrc: fuerza memoria de sistema (sin DMABuf).
+    // En máquinas físicas con GPU, el portal de screencast suele ofrecer
+    // memory:DMABuf, que videoconvert (CPU) no puede negociar. Esto fuerza
+    // a pipewiresrc a caer a un formato en memoria de sistema (SHM) si el
+    // stream lo soporta como alternativa.
+    GstElement *src_caps = gst_element_factory_make("capsfilter", "src_caps");
+    GstCaps *sys_mem_caps = gst_caps_new_empty_simple("video/x-raw");
+    GstCapsFeatures *sys_mem_features = gst_caps_features_new(GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY, NULL);
+    gst_caps_set_features(sys_mem_caps, 0, sys_mem_features);
+    g_object_set(G_OBJECT(src_caps), "caps", sys_mem_caps, NULL);
+    gst_caps_unref(sys_mem_caps);
+
+    // videorate + capsfilter: el portal entrega frames basado en "damage"
+    // (huecos largos cuando la pantalla no cambia, ej. cursor parpadeando en
+    // una terminal). videorate normaliza eso a un framerate constante,
+    // duplicando el último frame durante los huecos para que el cliente no
+    // perciba "freezes".
+    GstElement *videorate = gst_element_factory_make("videorate", "rate");
+    g_object_set(G_OBJECT(videorate), "drop-only", FALSE, "skip-to-first", TRUE, NULL);
+
+    GstElement *rate_caps = gst_element_factory_make("capsfilter", "rate_caps");
+    GstCaps *rate_caps_val = gst_caps_new_simple("video/x-raw",
+                                                 "framerate", GST_TYPE_FRACTION, 30, 1,
+                                                 NULL);
+    g_object_set(G_OBJECT(rate_caps), "caps", rate_caps_val, NULL);
+    gst_caps_unref(rate_caps_val);
+
     // Capsfilter pre-encoder: solo para x264enc, fuerza I420+sRGB para evitar tinte verde
     GstElement *enc_in = gst_element_factory_make("capsfilter", "enc_in");
     if (encoder_name_ == "x264enc")
@@ -263,12 +300,12 @@ bool GStreamerManager::linkElements()
     gst_caps_unref(rtp_caps);
 
     gst_bin_add_many(GST_BIN(pipeline_),
-                     pipewiresrc_, queue_main_, videoconvert_,
+                     pipewiresrc_, src_caps, queue_main_, videorate, rate_caps, videoconvert_,
                      enc_in, encoder_, h264parse_, h264out,
                      rtph264pay_, rtp_out, webrtcbin_,
                      NULL);
 
-    if (!gst_element_link_many(pipewiresrc_, queue_main_, videoconvert_,
+    if (!gst_element_link_many(pipewiresrc_, src_caps, queue_main_, videorate, rate_caps, videoconvert_,
                                enc_in, encoder_, h264parse_, h264out,
                                rtph264pay_, rtp_out,
                                NULL))
