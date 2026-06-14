@@ -3,6 +3,7 @@
 #define GST_USE_UNSTABLE_API
 #include <gst/webrtc/webrtc.h>
 #include <gst/sdp/sdp.h>
+#include <nice/agent.h>
 #include <iostream>
 #include <string>
 
@@ -188,6 +189,22 @@ bool GStreamerManager::createElements()
                      "min-rtp-port", kIceTcpPort,
                      "max-rtp-port", kIceTcpPort,
                      NULL);
+
+        // Restringir la recolección de candidatos a loopback: sin esto, libnice
+        // detecta automáticamente todas las interfaces locales (p.ej. Wi-Fi) y
+        // ofrece candidatos TCP en esas IPs. Si el cliente las elige, la
+        // conexión queda atada a esa red en vez de al túnel adb (USB).
+        NiceAgent *nice_agent = nullptr;
+        g_object_get(ice_agent, "agent", &nice_agent, NULL);
+        if (nice_agent)
+        {
+            NiceAddress loopback;
+            nice_address_init(&loopback);
+            nice_address_set_from_string(&loopback, "127.0.0.1");
+            nice_agent_add_local_address(nice_agent, &loopback);
+            g_object_unref(nice_agent);
+        }
+
         g_object_unref(ice_agent);
     }
 
