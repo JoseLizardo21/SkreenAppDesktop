@@ -8,6 +8,8 @@ sudo apt install -y \
     libgtk-3-dev \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
+    libnice-dev \
     libdbus-1-dev \
     git
 
@@ -46,7 +48,7 @@ Package: $NAME
 Version: $VERSION
 Architecture: $ARCH
 Maintainer: Lizardo <jose.212002lizardo@gmail.com>
-Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-vaapi, adb
+Depends: libgtk-3-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-ugly, gstreamer1.0-plugins-bad, gstreamer1.0-nice, gstreamer1.0-vaapi, adb
 Description: Desktop app for screen streaming to mobile via SkreenApp
  SkreenApp Desktop allows you to stream your desktop screen to a mobile
  device using the SkreenApp mobile application.

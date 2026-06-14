@@ -12,6 +12,9 @@ BuildRequires:  pkgconfig(gtk+-3.0)
 BuildRequires:  pkgconfig(gstreamer-1.0)
 BuildRequires:  pkgconfig(gstreamer-app-1.0)
 BuildRequires:  pkgconfig(gstreamer-video-1.0)
+BuildRequires:  pkgconfig(gstreamer-webrtc-1.0)
+BuildRequires:  pkgconfig(gstreamer-sdp-1.0)
+BuildRequires:  pkgconfig(nice)
 BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  git
 
@@ -20,6 +23,7 @@ Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 Requires:       gstreamer1-plugins-ugly
 Requires:       gstreamer1-plugins-bad-free
+Requires:       libnice-gstreamer1
 Requires:       gstreamer1-vaapi
 Requires:       android-tools
 
