@@ -6,6 +6,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include <vector>
 #include <dbus/dbus.h>
 #include <cstdint>
 
@@ -30,6 +31,7 @@ public:
      */
     using PortalCallback = std::function<void(const std::string&, uint32_t, int)>;
     using ErrorCallback = std::function<void(const std::string&)>;
+    using FdCallback = std::function<void(int)>;
 
     enum class State { IDLE, SESSION_CREATED, DEVICES_SELECTED, SOURCES_SELECTED };
 
@@ -84,6 +86,13 @@ public:
     void notifyPointerButton(int32_t button, uint32_t state);
     void notifyPointerAxis(double dx, double dy);
 
+    /**
+     * Request a fresh PipeWire file descriptor on the existing session
+     * (no portal dialog). The callback runs on the portal's DBus thread
+     * once the fd is obtained (or -1 on error).
+     */
+    void requestPipeWireFd(FdCallback callback);
+
 private:
     // Portal state
     std::string session_handle_;
@@ -110,6 +119,12 @@ private:
     void selectSources();
     void startCapture();
     void openPipeWireRemote();
+    void closeSession();
+
+    // Llamada síncrona a OpenPipeWireRemote sobre la sesión activa; bloquea el
+    // hilo de DBus hasta obtener el fd (o -1 en error). No dispara portal_callback_.
+    int requestPipeWireFdSync();
+    void processFdRequests();
 
     // DBus message handlers
     void handleCreateSessionResponse(DBusMessage* msg);
@@ -125,6 +140,10 @@ private:
 
     // Mutex for send operations
     std::mutex send_mutex_;
+
+    // Solicitudes pendientes de un fd de PipeWire nuevo (procesadas en worker_thread_)
+    std::mutex fd_requests_mutex_;
+    std::vector<FdCallback> fd_requests_;
 
     // Helper methods
     void sendDBusMessage(DBusMessage* msg);

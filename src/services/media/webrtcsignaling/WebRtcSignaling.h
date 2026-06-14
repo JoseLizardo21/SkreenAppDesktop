@@ -22,6 +22,9 @@ public:
     void setOnMessage(MessageCallback callback) { on_message_ = callback; }
     // Se invoca cuando el cliente conecta, para disparar la oferta WebRTC
     void setOnClientConnected(ConnectedCallback callback) { on_client_connected_ = callback; }
+    // Se invoca cuando el cliente se desconecta (mientras el servidor sigue corriendo),
+    // para refrescar el pipeline antes de aceptar la próxima conexión
+    void setOnClientDisconnected(ConnectedCallback callback) { on_client_disconnected_ = callback; }
 
 private:
     int server_fd_{-1};
@@ -30,5 +33,6 @@ private:
     std::thread thread_;
     MessageCallback on_message_;
     ConnectedCallback on_client_connected_;
+    ConnectedCallback on_client_disconnected_;
     void acceptLoop();
 };

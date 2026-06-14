@@ -95,5 +95,10 @@ void WebRtcSignaling::acceptLoop() {
         client_fd_ = -1;
         close(cfd);
         std::cout << "[WebRtcSignaling] Client disconnected\n";
+
+        // Si seguimos corriendo (no es un stop()), refrescar el pipeline para que
+        // la próxima conexión negocie WebRTC sobre un webrtcbin nuevo
+        if (running_ && on_client_disconnected_)
+            on_client_disconnected_();
     }
 }

@@ -44,7 +44,14 @@ void PortalManager::startAsync() {
         DBusError err;
         dbus_error_init(&err);
 
-        connection_ = dbus_bus_get(DBUS_BUS_SESSION, &err);
+        // Conexión privada (no compartida con el resto del proceso): al
+        // cerrarla en stop() el bus notifica la desconexión y Mutter limpia
+        // por completo la sesión de ScreenCast/RemoteDesktop asociada (mismo
+        // mecanismo de "cliente desaparecido" que libera el stream de
+        // PipeWire). Con la conexión compartida de dbus_bus_get(), el
+        // proceso nunca "desaparece" entre sesiones y el node_id reciclado
+        // de la siguiente captura se queda sin frames.
+        connection_ = dbus_bus_get_private(DBUS_BUS_SESSION, &err);
         if (dbus_error_is_set(&err)) {
             std::cerr << "⚠️  DBus connection failed: " << err.message << "\n";
             std::cerr << "   Attempting to set up DBus session...\n";
@@ -85,15 +92,46 @@ void PortalManager::startAsync() {
         // Keep connection alive listening for signals
         while (is_running_) {
             dbus_connection_read_write_dispatch(connection_, 5);
+            processFdRequests();
         }
 
+        // dbus_connection_close() es lo que hace que el bus notifique
+        // nuestra desconexión a Mutter (ver comentario más arriba)
+        dbus_connection_close(connection_);
         dbus_connection_unref(connection_);
         connection_ = nullptr;
     });
 }
 
 void PortalManager::stop() {
+    // El bus session de DBus es compartido por todo el proceso (dbus_bus_get
+    // devuelve la misma conexión en cada startAsync()), así que la sesión del
+    // portal de la captura anterior nunca se cierra sola al "desconectar". Si
+    // no se cierra explícitamente, xdg-desktop-portal/el compositor la dejan
+    // activa indefinidamente y la siguiente sesión (nuevo node_id) puede no
+    // recibir frames de PipeWire.
+    closeSession();
     is_running_ = false;
+}
+
+void PortalManager::closeSession() {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (!connection_ || session_handle_.empty())
+        return;
+
+    DBusMessage* msg = dbus_message_new_method_call(
+        "org.freedesktop.portal.Desktop",
+        session_handle_.c_str(),
+        "org.freedesktop.portal.Session",
+        "Close"
+    );
+    if (!msg)
+        return;
+
+    dbus_connection_send(connection_, msg, nullptr);
+    dbus_connection_flush(connection_);
+    dbus_message_unref(msg);
+    std::cout << "Portal session closed: " << session_handle_ << "\n";
 }
 
 void PortalManager::createSession() {
@@ -348,6 +386,23 @@ void PortalManager::openPipeWireRemote() {
 
     std::cout << "Requesting PipeWire file descriptor...\n";
 
+    int fd = requestPipeWireFdSync();
+    if (fd < 0) {
+        error("Failed to obtain PipeWire file descriptor");
+        return;
+    }
+
+    pipewire_fd_ = fd;
+
+    if (portal_callback_) {
+        portal_callback_(session_handle_, pipewire_node_id_, pipewire_fd_);
+    }
+}
+
+int PortalManager::requestPipeWireFdSync() {
+    if (session_handle_.empty() || !connection_)
+        return -1;
+
     DBusMessage* msg = dbus_message_new_method_call(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
@@ -355,10 +410,8 @@ void PortalManager::openPipeWireRemote() {
         "OpenPipeWireRemote"
     );
 
-    if (!msg) {
-        error("Failed to create OpenPipeWireRemote message");
-        return;
-    }
+    if (!msg)
+        return -1;
 
     DBusMessageIter args;
     dbus_message_iter_init_append(msg, &args);
@@ -371,66 +424,66 @@ void PortalManager::openPipeWireRemote() {
     dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &dict);
     dbus_message_iter_close_container(&args, &dict);
 
-    // Send synchronously and get reply
-    DBusError err;
-    dbus_error_init(&err);
-
     DBusPendingCall* pending = nullptr;
     if (!dbus_connection_send_with_reply(connection_, msg, &pending, -1)) {
-        error("Failed to send OpenPipeWireRemote");
         dbus_message_unref(msg);
-        return;
+        return -1;
     }
 
     dbus_connection_flush(connection_);
     dbus_message_unref(msg);
 
-    if (!pending) {
-        error("Pending call is NULL");
-        return;
-    }
+    if (!pending)
+        return -1;
 
-    // Block until reply
+    // Block until reply (corre en worker_thread_, no comparte connection_ con otro hilo)
     dbus_pending_call_block(pending);
     DBusMessage* reply = dbus_pending_call_steal_reply(pending);
     dbus_pending_call_unref(pending);
 
-    if (!reply) {
-        error("No reply from OpenPipeWireRemote");
-        return;
-    }
+    if (!reply)
+        return -1;
 
-    // Check for errors
     if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
         const char* error_name = dbus_message_get_error_name(reply);
-        error("OpenPipeWireRemote error: " + std::string(error_name));
+        std::cerr << "Portal Error: OpenPipeWireRemote error: " << error_name << "\n";
         dbus_message_unref(reply);
-        return;
+        return -1;
     }
 
-    // Extract file descriptor
     int fd = -1;
+    DBusError err;
     dbus_error_init(&err);
-    if (dbus_message_get_args(reply, &err,
-                              DBUS_TYPE_UNIX_FD, &fd,
-                              DBUS_TYPE_INVALID)) {
-        pipewire_fd_ = fd;
-        // std::cout << "PipeWire FD obtained: " << pipewire_fd_ << "\n";
-        // std::cout << "Portal workflow complete!\n";
-        // std::cout << "   Session: " << session_handle_ << "\n";
-        // std::cout << "   PipeWire Node ID: " << pipewire_node_id_ << "\n";
-        // std::cout << "   PipeWire FD: " << pipewire_fd_ << "\n";
-
-        // Call the success callback
-        if (portal_callback_) {
-            portal_callback_(session_handle_, pipewire_node_id_, pipewire_fd_);
-        }
-    } else {
-        error("Failed to extract file descriptor: " + std::string(err.message));
+    if (!dbus_message_get_args(reply, &err,
+                               DBUS_TYPE_UNIX_FD, &fd,
+                               DBUS_TYPE_INVALID)) {
+        std::cerr << "Portal Error: Failed to extract file descriptor: " << err.message << "\n";
         dbus_error_free(&err);
+        fd = -1;
     }
 
     dbus_message_unref(reply);
+    return fd;
+}
+
+void PortalManager::requestPipeWireFd(FdCallback callback) {
+    std::lock_guard<std::mutex> lock(fd_requests_mutex_);
+    fd_requests_.push_back(std::move(callback));
+}
+
+void PortalManager::processFdRequests() {
+    std::vector<FdCallback> pending;
+    {
+        std::lock_guard<std::mutex> lock(fd_requests_mutex_);
+        if (fd_requests_.empty())
+            return;
+        pending.swap(fd_requests_);
+    }
+
+    for (auto& cb : pending) {
+        int fd = requestPipeWireFdSync();
+        cb(fd);
+    }
 }
 
 DBusHandlerResult PortalManager::onPortalSignal(DBusConnection* conn, DBusMessage* msg, void* user_data) {
@@ -642,24 +695,14 @@ void PortalManager::sendDBusMessage(DBusMessage* msg) {
         return;
     }
 
-    DBusError err;
-    dbus_error_init(&err);
-
-    DBusConnection* conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if (!conn) {
-        error("Failed to get DBus connection");
-        dbus_message_unref(msg);
-        return;
-    }
-
-    dbus_connection_send(conn, msg, nullptr);
-    dbus_connection_flush(conn);
-    dbus_connection_unref(conn);
+    dbus_connection_send(connection_, msg, nullptr);
+    dbus_connection_flush(connection_);
     dbus_message_unref(msg);
 }
 
 void PortalManager::cleanup() {
     if (connection_) {
+        dbus_connection_close(connection_);
         dbus_connection_unref(connection_);
         connection_ = nullptr;
     }

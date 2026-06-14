@@ -97,6 +97,17 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         gm->createOffer();
     });
 
+    auto* pm_ptr = portal_manager_.get();
+    webrtc_signaling_->setOnClientDisconnected([pm_ptr, gm]() {
+        pm_ptr->requestPipeWireFd([gm](int fd) {
+            if (fd < 0) {
+                std::cerr << "[HomeController] No se pudo obtener un fd de PipeWire nuevo para reconectar\n";
+                return;
+            }
+            gm->restartPipeline(fd);
+        });
+    });
+
     webrtc_signaling_->setOnMessage([gm](const std::string& line) {
         try {
             json j = json::parse(line);

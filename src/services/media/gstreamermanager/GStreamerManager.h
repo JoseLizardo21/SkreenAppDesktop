@@ -29,6 +29,12 @@ public:
     void stopCapture();
     bool isCapturing() const { return is_capturing_; }
 
+    // Recrea el pipeline (y por tanto webrtcbin_) con un fd de PipeWire nuevo
+    // (pipewiresrc cierra el fd anterior al destruirse) reusando el node_id ya
+    // negociado con el portal, para permitir una nueva negociación WebRTC tras
+    // que el cliente anterior se desconectó
+    bool restartPipeline(int fd);
+
     int getStreamWidth() const { return stream_w_; }
     int getStreamHeight() const { return stream_h_; }
 

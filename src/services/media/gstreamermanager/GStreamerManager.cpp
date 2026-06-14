@@ -7,6 +7,32 @@
 #include <iostream>
 #include <string>
 
+namespace
+{
+// DIAGNÓSTICO TEMPORAL: cuenta buffers por etapa a lo largo de la sesión, para
+// ver si el flujo es continuo (sesión 1) o se detiene tras el primero (sesión 2+).
+struct ProbeCounter
+{
+    const char *label;
+    int count;
+};
+ProbeCounter g_pwsrc_counter{"pipewiresrc src", 0};
+ProbeCounter g_h264_counter{"h264parse src", 0};
+ProbeCounter g_queue_counter{"queue_main src", 0};
+ProbeCounter g_convert_counter{"videoconvert src", 0};
+ProbeCounter g_enc_sink_counter{"encoder sink", 0};
+ProbeCounter g_enc_src_counter{"encoder src", 0};
+
+GstPadProbeReturn countBuffers(GstPad *, GstPadProbeInfo *, gpointer user_data)
+{
+    auto *c = static_cast<ProbeCounter *>(user_data);
+    c->count++;
+    if (c->count <= 5 || c->count % 30 == 0)
+        std::cout << "🟢 " << c->label << ": buffer #" << c->count << "\n";
+    return GST_PAD_PROBE_OK;
+}
+} // namespace
+
 GStreamerManager::GStreamerManager() {}
 
 GStreamerManager::~GStreamerManager()
@@ -70,8 +96,11 @@ bool GStreamerManager::createElements()
         const char *label;
     };
     static const Candidate candidates[] = {
-        {"vah264enc", "Intel/AMD H.264 VA-API"},
-        {"vaapih264enc", "Intel/AMD H.264 VAAPI"},
+        // DIAGNÓSTICO TEMPORAL: VAAPI deshabilitado para probar si el encoder
+        // de software también se queda sin producir buffers tras el primero
+        // en la segunda sesión.
+        // {"vah264enc", "Intel/AMD H.264 VA-API"},
+        // {"vaapih264enc", "Intel/AMD H.264 VAAPI"},
         {"nvh264enc", "NVIDIA H.264 NVENC"},
         {"x264enc", "H.264 x264 software (zerolatency)"},
         {"openh264enc", "H.264 OpenH264 software"},
@@ -252,20 +281,17 @@ bool GStreamerManager::linkElements()
     g_object_set(G_OBJECT(src_caps), "caps", sys_mem_caps, NULL);
     gst_caps_unref(sys_mem_caps);
 
-    // videorate + capsfilter: el portal entrega frames basado en "damage"
-    // (huecos largos cuando la pantalla no cambia, ej. cursor parpadeando en
-    // una terminal). videorate normaliza eso a un framerate constante,
-    // duplicando el último frame durante los huecos para que el cliente no
-    // perciba "freezes".
-    GstElement *videorate = gst_element_factory_make("videorate", "rate");
-    g_object_set(G_OBJECT(videorate), "drop-only", FALSE, "skip-to-first", TRUE, NULL);
-
-    GstElement *rate_caps = gst_element_factory_make("capsfilter", "rate_caps");
-    GstCaps *rate_caps_val = gst_caps_new_simple("video/x-raw",
-                                                 "framerate", GST_TYPE_FRACTION, 30, 1,
-                                                 NULL);
-    g_object_set(G_OBJECT(rate_caps), "caps", rate_caps_val, NULL);
-    gst_caps_unref(rate_caps_val);
+    // DIAGNÓSTICO TEMPORAL: videorate/rate_caps deshabilitado — parece estar
+    // bloqueando los buffers tras el primero (ver g_h264_counter).
+    // GstElement *videorate = gst_element_factory_make("videorate", "rate");
+    // g_object_set(G_OBJECT(videorate), "drop-only", FALSE, "skip-to-first", TRUE, NULL);
+    //
+    // GstElement *rate_caps = gst_element_factory_make("capsfilter", "rate_caps");
+    // GstCaps *rate_caps_val = gst_caps_new_simple("video/x-raw",
+    //                                              "framerate", GST_TYPE_FRACTION, 30, 1,
+    //                                              NULL);
+    // g_object_set(G_OBJECT(rate_caps), "caps", rate_caps_val, NULL);
+    // gst_caps_unref(rate_caps_val);
 
     // Capsfilter pre-encoder: solo para x264enc, fuerza I420+sRGB para evitar tinte verde
     GstElement *enc_in = gst_element_factory_make("capsfilter", "enc_in");
@@ -300,12 +326,12 @@ bool GStreamerManager::linkElements()
     gst_caps_unref(rtp_caps);
 
     gst_bin_add_many(GST_BIN(pipeline_),
-                     pipewiresrc_, src_caps, queue_main_, videorate, rate_caps, videoconvert_,
+                     pipewiresrc_, src_caps, queue_main_, videoconvert_,
                      enc_in, encoder_, h264parse_, h264out,
                      rtph264pay_, rtp_out, webrtcbin_,
                      NULL);
 
-    if (!gst_element_link_many(pipewiresrc_, src_caps, queue_main_, videorate, rate_caps, videoconvert_,
+    if (!gst_element_link_many(pipewiresrc_, src_caps, queue_main_, videoconvert_,
                                enc_in, encoder_, h264parse_, h264out,
                                rtph264pay_, rtp_out,
                                NULL))
@@ -340,6 +366,42 @@ bool GStreamerManager::linkElements()
     gst_pad_add_probe(pay_sink, GST_PAD_PROBE_TYPE_BUFFER,
                       onPayloaderBuffer, this, NULL);
     gst_object_unref(pay_sink);
+
+    // DIAGNÓSTICO TEMPORAL: localizar en qué etapa se detienen los buffers
+    // en una sesión que se queda en stall
+    {
+        GstPad *p;
+        g_pwsrc_counter.count = 0;
+        g_h264_counter.count = 0;
+        g_queue_counter.count = 0;
+        g_convert_counter.count = 0;
+        g_enc_sink_counter.count = 0;
+        g_enc_src_counter.count = 0;
+
+        p = gst_element_get_static_pad(pipewiresrc_, "src");
+        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_pwsrc_counter, NULL);
+        gst_object_unref(p);
+
+        p = gst_element_get_static_pad(queue_main_, "src");
+        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_queue_counter, NULL);
+        gst_object_unref(p);
+
+        p = gst_element_get_static_pad(videoconvert_, "src");
+        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_convert_counter, NULL);
+        gst_object_unref(p);
+
+        p = gst_element_get_static_pad(encoder_, "sink");
+        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_enc_sink_counter, NULL);
+        gst_object_unref(p);
+
+        p = gst_element_get_static_pad(encoder_, "src");
+        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_enc_src_counter, NULL);
+        gst_object_unref(p);
+
+        p = gst_element_get_static_pad(h264parse_, "src");
+        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_h264_counter, NULL);
+        gst_object_unref(p);
+    }
 
     std::cout << "  ✓ Pipeline linked\n";
     return true;
@@ -494,6 +556,14 @@ bool GStreamerManager::startCapture()
     return true;
 }
 
+bool GStreamerManager::restartPipeline(int fd)
+{
+    std::cout << "🔄 Reiniciando pipeline para nueva sesión WebRTC (fd=" << fd << ")...\n";
+    if (!initializePipeline(fd, node_id_))
+        return false;
+    return startCapture();
+}
+
 void GStreamerManager::stopCapture()
 {
     if (!is_capturing_ || !pipeline_)
@@ -524,6 +594,18 @@ GstBusSyncReply GStreamerManager::onBusMessage(GstBus *bus, GstMessage *message,
         g_clear_error(&err);
         g_free(debug_info);
         self->error("GStreamer error occurred");
+        break;
+    }
+    case GST_MESSAGE_WARNING:
+    {
+        GError *err;
+        gchar *debug_info;
+        gst_message_parse_warning(message, &err, &debug_info);
+        std::cerr << "GStreamer Warning: " << err->message << "\n";
+        if (debug_info)
+            std::cerr << "   Debug: " << debug_info << "\n";
+        g_clear_error(&err);
+        g_free(debug_info);
         break;
     }
     case GST_MESSAGE_EOS:
