@@ -7,32 +7,6 @@
 #include <iostream>
 #include <string>
 
-namespace
-{
-// DIAGNÓSTICO TEMPORAL: cuenta buffers por etapa a lo largo de la sesión, para
-// ver si el flujo es continuo (sesión 1) o se detiene tras el primero (sesión 2+).
-struct ProbeCounter
-{
-    const char *label;
-    int count;
-};
-ProbeCounter g_pwsrc_counter{"pipewiresrc src", 0};
-ProbeCounter g_h264_counter{"h264parse src", 0};
-ProbeCounter g_queue_counter{"queue_main src", 0};
-ProbeCounter g_convert_counter{"videoconvert src", 0};
-ProbeCounter g_enc_sink_counter{"encoder sink", 0};
-ProbeCounter g_enc_src_counter{"encoder src", 0};
-
-GstPadProbeReturn countBuffers(GstPad *, GstPadProbeInfo *, gpointer user_data)
-{
-    auto *c = static_cast<ProbeCounter *>(user_data);
-    c->count++;
-    if (c->count <= 5 || c->count % 30 == 0)
-        std::cout << "🟢 " << c->label << ": buffer #" << c->count << "\n";
-    return GST_PAD_PROBE_OK;
-}
-} // namespace
-
 GStreamerManager::GStreamerManager() {}
 
 GStreamerManager::~GStreamerManager()
@@ -282,7 +256,7 @@ bool GStreamerManager::linkElements()
     gst_caps_unref(sys_mem_caps);
 
     // DIAGNÓSTICO TEMPORAL: videorate/rate_caps deshabilitado — parece estar
-    // bloqueando los buffers tras el primero (ver g_h264_counter).
+    // bloqueando los buffers tras el primero.
     // GstElement *videorate = gst_element_factory_make("videorate", "rate");
     // g_object_set(G_OBJECT(videorate), "drop-only", FALSE, "skip-to-first", TRUE, NULL);
     //
@@ -366,42 +340,6 @@ bool GStreamerManager::linkElements()
     gst_pad_add_probe(pay_sink, GST_PAD_PROBE_TYPE_BUFFER,
                       onPayloaderBuffer, this, NULL);
     gst_object_unref(pay_sink);
-
-    // DIAGNÓSTICO TEMPORAL: localizar en qué etapa se detienen los buffers
-    // en una sesión que se queda en stall
-    {
-        GstPad *p;
-        g_pwsrc_counter.count = 0;
-        g_h264_counter.count = 0;
-        g_queue_counter.count = 0;
-        g_convert_counter.count = 0;
-        g_enc_sink_counter.count = 0;
-        g_enc_src_counter.count = 0;
-
-        p = gst_element_get_static_pad(pipewiresrc_, "src");
-        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_pwsrc_counter, NULL);
-        gst_object_unref(p);
-
-        p = gst_element_get_static_pad(queue_main_, "src");
-        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_queue_counter, NULL);
-        gst_object_unref(p);
-
-        p = gst_element_get_static_pad(videoconvert_, "src");
-        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_convert_counter, NULL);
-        gst_object_unref(p);
-
-        p = gst_element_get_static_pad(encoder_, "sink");
-        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_enc_sink_counter, NULL);
-        gst_object_unref(p);
-
-        p = gst_element_get_static_pad(encoder_, "src");
-        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_enc_src_counter, NULL);
-        gst_object_unref(p);
-
-        p = gst_element_get_static_pad(h264parse_, "src");
-        gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER, countBuffers, &g_h264_counter, NULL);
-        gst_object_unref(p);
-    }
 
     std::cout << "  ✓ Pipeline linked\n";
     return true;
