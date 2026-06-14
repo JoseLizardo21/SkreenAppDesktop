@@ -58,7 +58,6 @@ bool GStreamerManager::createElements()
 
     pipewiresrc_ = gst_element_factory_make("pipewiresrc", "source");
     queue_main_ = gst_element_factory_make("queue", "queue_main");
-    videoconvert_ = gst_element_factory_make("videoconvert", "convert");
     h264parse_ = gst_element_factory_make("h264parse", "parser");
     rtph264pay_ = gst_element_factory_make("rtph264pay", "pay");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtcbin");
@@ -152,7 +151,17 @@ bool GStreamerManager::createElements()
         }
     }
 
-    if (!pipewiresrc_ || !queue_main_ || !videoconvert_ ||
+    // Conversión pre-encoder: con VAAPI/VA usa vapostproc/vaapipostproc (GPU), que
+    // pueden recibir memory:DMABuf de pipewiresrc y entregar la superficie ya en
+    // GPU al encoder. Con el resto, videoconvert (CPU) sobre memoria de sistema.
+    if (encoder_name_ == "vah264enc")
+        convert_ = gst_element_factory_make("vapostproc", "convert");
+    else if (encoder_name_ == "vaapih264enc")
+        convert_ = gst_element_factory_make("vaapipostproc", "convert");
+    else
+        convert_ = gst_element_factory_make("videoconvert", "convert");
+
+    if (!pipewiresrc_ || !queue_main_ || !convert_ ||
         !encoder_ || !h264parse_ || !rtph264pay_ || !webrtcbin_)
     {
         error("Failed to create one or more elements");
@@ -240,17 +249,20 @@ bool GStreamerManager::linkElements()
 
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
-    // Capsfilter post-pipewiresrc: fuerza memoria de sistema (sin DMABuf).
-    // En máquinas físicas con GPU, el portal de screencast suele ofrecer
-    // memory:DMABuf, que videoconvert (CPU) no puede negociar. Esto fuerza
-    // a pipewiresrc a caer a un formato en memoria de sistema (SHM) si el
-    // stream lo soporta como alternativa.
+    // Capsfilter post-pipewiresrc. Con vapostproc/vaapipostproc (GPU) se deja sin
+    // restricción: pueden negociar memory:DMABuf directo con pipewiresrc, evitando
+    // una copia CPU<->GPU por frame. Con videoconvert (CPU) hay que forzar memoria
+    // de sistema, ya que en máquinas con GPU el portal de screencast suele ofrecer
+    // memory:DMABuf, que videoconvert no puede negociar.
     GstElement *src_caps = gst_element_factory_make("capsfilter", "src_caps");
-    GstCaps *sys_mem_caps = gst_caps_new_empty_simple("video/x-raw");
-    GstCapsFeatures *sys_mem_features = gst_caps_features_new(GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY, NULL);
-    gst_caps_set_features(sys_mem_caps, 0, sys_mem_features);
-    g_object_set(G_OBJECT(src_caps), "caps", sys_mem_caps, NULL);
-    gst_caps_unref(sys_mem_caps);
+    if (!isVaapiEncoder())
+    {
+        GstCaps *sys_mem_caps = gst_caps_new_empty_simple("video/x-raw");
+        GstCapsFeatures *sys_mem_features = gst_caps_features_new(GST_CAPS_FEATURE_MEMORY_SYSTEM_MEMORY, NULL);
+        gst_caps_set_features(sys_mem_caps, 0, sys_mem_features);
+        g_object_set(G_OBJECT(src_caps), "caps", sys_mem_caps, NULL);
+        gst_caps_unref(sys_mem_caps);
+    }
 
     // DIAGNÓSTICO TEMPORAL: videorate/rate_caps deshabilitado — parece estar
     // bloqueando los buffers tras el primero.
@@ -297,12 +309,12 @@ bool GStreamerManager::linkElements()
     gst_caps_unref(rtp_caps);
 
     gst_bin_add_many(GST_BIN(pipeline_),
-                     pipewiresrc_, src_caps, queue_main_, videoconvert_,
+                     pipewiresrc_, src_caps, queue_main_, convert_,
                      enc_in, encoder_, h264parse_, h264out,
                      rtph264pay_, rtp_out, webrtcbin_,
                      NULL);
 
-    if (!gst_element_link_many(pipewiresrc_, src_caps, queue_main_, videoconvert_,
+    if (!gst_element_link_many(pipewiresrc_, src_caps, queue_main_, convert_,
                                enc_in, encoder_, h264parse_, h264out,
                                rtph264pay_, rtp_out,
                                NULL))
@@ -610,7 +622,7 @@ void GStreamerManager::cleanup()
     {
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
-        pipewiresrc_ = queue_main_ = videoconvert_ = nullptr;
+        pipewiresrc_ = queue_main_ = convert_ = nullptr;
         encoder_ = h264parse_ = rtph264pay_ = webrtcbin_ = nullptr;
     }
 }

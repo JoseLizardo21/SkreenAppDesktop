@@ -53,7 +53,7 @@ private:
     GstElement* pipeline_{nullptr};
     GstElement* pipewiresrc_{nullptr};
     GstElement* queue_main_{nullptr};
-    GstElement* videoconvert_{nullptr};
+    GstElement* convert_{nullptr};
     GstElement* encoder_{nullptr};
     GstElement* h264parse_{nullptr};
     GstElement* rtph264pay_{nullptr};
@@ -90,6 +90,13 @@ private:
     bool configurePipeWireSource();
     bool linkElements();
     bool setupBusHandler();
+
+    // vah264enc/vaapih264enc admiten memory:DMABuf y conversión por GPU
+    // (vapostproc/vaapipostproc), evitando el round-trip CPU<->GPU de videoconvert
+    bool isVaapiEncoder() const
+    {
+        return encoder_name_ == "vah264enc" || encoder_name_ == "vaapih264enc";
+    }
 
     static GstBusSyncReply onBusMessage(GstBus* bus, GstMessage* message, gpointer data);
     static GstPadProbeReturn onCapsProbe(GstPad* pad, GstPadProbeInfo* info, gpointer user_data);
