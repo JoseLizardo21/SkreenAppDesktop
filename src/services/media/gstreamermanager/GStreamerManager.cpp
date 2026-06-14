@@ -70,11 +70,8 @@ bool GStreamerManager::createElements()
         const char *label;
     };
     static const Candidate candidates[] = {
-        // DIAGNÓSTICO TEMPORAL: VAAPI deshabilitado para probar si el encoder
-        // de software también se queda sin producir buffers tras el primero
-        // en la segunda sesión.
-        // {"vah264enc", "Intel/AMD H.264 VA-API"},
-        // {"vaapih264enc", "Intel/AMD H.264 VAAPI"},
+        {"vah264enc", "Intel/AMD H.264 VA-API"},
+        {"vaapih264enc", "Intel/AMD H.264 VAAPI"},
         {"nvh264enc", "NVIDIA H.264 NVENC"},
         {"x264enc", "H.264 x264 software (zerolatency)"},
         {"openh264enc", "H.264 OpenH264 software"},
