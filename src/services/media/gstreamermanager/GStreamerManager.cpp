@@ -107,6 +107,7 @@ bool GStreamerManager::createElements()
                          "keyframe-period", config_.keyframe_interval,
                          "quality-level", config_.encoder_speed,
                          "max-bframes", 0,
+                         "cpb-length", 125, // ms; equivalente al cpb-size de vah264enc (bitrate/8)
                          NULL);
 
             // CBR vía nick de string: evita depender de valores numéricos del
