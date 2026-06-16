@@ -98,19 +98,14 @@ void HomeController::onPortalComplete(const std::string& session_handle,
     });
 
     session_active_->store(true);
-    auto* pm_ptr = portal_manager_.get();
     auto active = session_active_;
-    webrtc_signaling_->setOnClientDisconnected([pm_ptr, gm, active]() {
-        pm_ptr->requestPipeWireFd([gm, active](int fd) {
-            if (fd < 0 || !active->load()) {
-                if (fd >= 0)
-                    std::cerr << "[HomeController] Reconexión cancelada (sesión detenida)\n";
-                else
-                    std::cerr << "[HomeController] No se pudo obtener un fd de PipeWire nuevo para reconectar\n";
-                return;
-            }
-            gm->restartPipeline(fd);
-        });
+    webrtc_signaling_->setOnClientDisconnected([gm, active]() {
+        if (!active->load())
+            return;
+        // Solo reemplazamos el webrtcbin, dejando pipewiresrc y el encoder
+        // corriendo para evitar el reconecte a PipeWire que causaba pantalla negra.
+        if (!gm->restartWebRtcBin())
+            std::cerr << "[HomeController] Error al reiniciar el WebRTC bin\n";
     });
 
     webrtc_signaling_->setOnMessage([gm](const std::string& line) {

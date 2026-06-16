@@ -29,11 +29,12 @@ public:
     void stopCapture();
     bool isCapturing() const { return is_capturing_; }
 
-    // Recrea el pipeline (y por tanto webrtcbin_) con un fd de PipeWire nuevo
-    // (pipewiresrc cierra el fd anterior al destruirse) reusando el node_id ya
-    // negociado con el portal, para permitir una nueva negociación WebRTC tras
-    // que el cliente anterior se desconectó
     bool restartPipeline(int fd);
+
+    // Reemplaza solo el webrtcbin (para nueva negociación WebRTC tras
+    // desconexión del cliente) manteniendo pipewiresrc y el encoder corriendo,
+    // evitando así el reconecte a PipeWire que causaba pantalla negra.
+    bool restartWebRtcBin();
 
     int getStreamWidth() const { return stream_w_; }
     int getStreamHeight() const { return stream_h_; }
@@ -58,6 +59,7 @@ private:
     GstElement* h264parse_{nullptr};
     GstElement* rtph264pay_{nullptr};
     GstElement* webrtcbin_{nullptr};
+    GstPad*     webrtc_sink_pad_{nullptr}; // request pad de webrtcbin (sink_%u)
 
     std::string encoder_name_;
     StreamConfig config_;

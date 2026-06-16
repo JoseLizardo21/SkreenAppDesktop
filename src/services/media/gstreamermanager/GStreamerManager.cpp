@@ -337,7 +337,7 @@ bool GStreamerManager::linkElements()
         return false;
     }
     gst_object_unref(rtp_src);
-    gst_object_unref(webrtc_sink);
+    webrtc_sink_pad_ = webrtc_sink; // guardamos la ref para poder hacer swap dinámico
 
     // Lee width/height reales del stream codificado (para mapear coordenadas de touch)
     GstPad *parse_src = gst_element_get_static_pad(h264parse_, "src");
@@ -512,6 +512,93 @@ bool GStreamerManager::restartPipeline(int fd)
     return startCapture();
 }
 
+bool GStreamerManager::restartWebRtcBin()
+{
+    if (!pipeline_ || !webrtcbin_ || !webrtc_sink_pad_)
+        return false;
+
+    // Encontrar el capsfilter "rtp_out" (entre rtph264pay y webrtcbin)
+    GstElement *rtp_out = gst_bin_get_by_name(GST_BIN(pipeline_), "rtp_out");
+    if (!rtp_out)
+        return false;
+    GstPad *rtp_src = gst_element_get_static_pad(rtp_out, "src");
+    gst_object_unref(rtp_out);
+    if (!rtp_src)
+        return false;
+
+    // 1. Desconectar y liberar el pad request del webrtcbin viejo
+    gst_pad_unlink(rtp_src, webrtc_sink_pad_);
+    gst_element_release_request_pad(webrtcbin_, webrtc_sink_pad_);
+    gst_object_unref(webrtc_sink_pad_);
+    webrtc_sink_pad_ = nullptr;
+
+    // 2. Destruir el webrtcbin viejo (set NULL → remove → pipeline lo unrefea)
+    gst_element_set_state(webrtcbin_, GST_STATE_NULL);
+    gst_bin_remove(GST_BIN(pipeline_), webrtcbin_); // bin libera su ref → destruye
+    webrtcbin_ = nullptr;
+
+    // 3. Crear y configurar el nuevo webrtcbin
+    webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtcbin");
+    if (!webrtcbin_)
+    {
+        gst_object_unref(rtp_src);
+        return false;
+    }
+
+    g_object_set(G_OBJECT(webrtcbin_),
+                 "bundle-policy", 3 /* MAX_BUNDLE */,
+                 NULL);
+
+    GObject *ice_agent = nullptr;
+    g_object_get(G_OBJECT(webrtcbin_), "ice-agent", &ice_agent, NULL);
+    if (ice_agent)
+    {
+        g_object_set(ice_agent,
+                     "ice-udp", FALSE,
+                     "ice-tcp", TRUE,
+                     "min-rtp-port", kIceTcpPort,
+                     "max-rtp-port", kIceTcpPort,
+                     NULL);
+        NiceAgent *nice_agent = nullptr;
+        g_object_get(ice_agent, "agent", &nice_agent, NULL);
+        if (nice_agent)
+        {
+            NiceAddress loopback;
+            nice_address_init(&loopback);
+            nice_address_set_from_string(&loopback, "127.0.0.1");
+            nice_agent_add_local_address(nice_agent, &loopback);
+            g_object_unref(nice_agent);
+        }
+        g_object_unref(ice_agent);
+    }
+
+    g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
+
+    // 4. Añadir al pipeline y enlazar con rtp_out
+    gst_bin_add(GST_BIN(pipeline_), webrtcbin_);
+
+    webrtc_sink_pad_ = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
+    if (!webrtc_sink_pad_ || gst_pad_link(rtp_src, webrtc_sink_pad_) != GST_PAD_LINK_OK)
+    {
+        std::cerr << "GStreamer Error: Failed to link rtp_out to new webrtcbin\n";
+        if (webrtc_sink_pad_)
+        {
+            gst_element_release_request_pad(webrtcbin_, webrtc_sink_pad_);
+            gst_object_unref(webrtc_sink_pad_);
+            webrtc_sink_pad_ = nullptr;
+        }
+        gst_object_unref(rtp_src);
+        return false;
+    }
+    gst_object_unref(rtp_src);
+
+    // 5. Sincronizar estado con el pipeline (→ PLAYING)
+    gst_element_sync_state_with_parent(webrtcbin_);
+
+    std::cout << "🔄 WebRTC bin reemplazado (pipewiresrc sigue corriendo)\n";
+    return true;
+}
+
 void GStreamerManager::stopCapture()
 {
     if (!is_capturing_ || !pipeline_)
@@ -621,6 +708,13 @@ void GStreamerManager::cleanup()
 {
     if (pipeline_)
     {
+        if (webrtc_sink_pad_ && webrtcbin_)
+        {
+            gst_element_release_request_pad(webrtcbin_, webrtc_sink_pad_);
+            gst_object_unref(webrtc_sink_pad_);
+        }
+        webrtc_sink_pad_ = nullptr;
+
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
         pipewiresrc_ = queue_main_ = convert_ = nullptr;
