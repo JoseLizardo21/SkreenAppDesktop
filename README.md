@@ -51,6 +51,11 @@ El paquete `.rpm` quedará en `~/rpmbuild/RPMS/`. Para instalarlo:
 sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm
 ```
 
+Para desinstalarlo:
+```bash
+sudo dnf remove skreenapp
+```
+
 # Empaquetar como DEB
 
 Ejecuta:
