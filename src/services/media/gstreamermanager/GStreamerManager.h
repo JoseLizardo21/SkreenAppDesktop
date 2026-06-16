@@ -105,6 +105,7 @@ private:
     static GstPadProbeReturn onPayloaderBuffer(GstPad* pad, GstPadProbeInfo* info, gpointer user_data);
     static void onOfferCreated(GstPromise* promise, gpointer user_data);
     static void onIceCandidateCb(GstElement* webrtcbin, guint mlineindex, gchar* candidate, gpointer user_data);
+    static void onIceConnectionStateCb(GstElement* webrtcbin, GParamSpec* pspec, gpointer user_data);
 
     void cleanup();
     void error(const std::string& message);

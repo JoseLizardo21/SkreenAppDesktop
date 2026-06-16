@@ -229,6 +229,7 @@ bool GStreamerManager::createElements()
     }
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
+    g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
 
     std::cout << "  ✓ All elements created\n";
     return true;
@@ -476,6 +477,21 @@ void GStreamerManager::onIceCandidateCb(GstElement *webrtcbin, guint mlineindex,
         self->on_ice_candidate_(mlineindex, std::string(candidate));
 }
 
+void GStreamerManager::onIceConnectionStateCb(GstElement *webrtcbin, GParamSpec *, gpointer user_data)
+{
+    GstWebRTCICEConnectionState state;
+    g_object_get(webrtcbin, "ice-connection-state", &state, NULL);
+    // Forzar IDR cuando ICE está listo para transmitir: garantiza que el primer
+    // frame que recibe el cliente sea un keyframe decodable (sin referencia previa).
+    if (state == GST_WEBRTC_ICE_CONNECTION_STATE_CONNECTED ||
+        state == GST_WEBRTC_ICE_CONNECTION_STATE_COMPLETED)
+    {
+        auto *self = static_cast<GStreamerManager *>(user_data);
+        self->forceKeyframe();
+        std::cout << "🔑 IDR forzado al establecer conexión ICE\n";
+    }
+}
+
 // ============================================================
 
 bool GStreamerManager::startCapture()
@@ -517,14 +533,26 @@ bool GStreamerManager::restartWebRtcBin()
     if (!pipeline_ || !webrtcbin_ || !webrtc_sink_pad_)
         return false;
 
+    // Pausar el pipeline para que el encoder no intente hacer push durante el
+    // gap en que rtp_out no tiene sink: eso causaba "Failed to push one frame"
+    // y ponía al encoder en estado ERROR, bloqueando el stream permanentemente.
+    gst_element_set_state(pipeline_, GST_STATE_PAUSED);
+    gst_element_get_state(pipeline_, nullptr, nullptr, 200 * GST_MSECOND);
+
     // Encontrar el capsfilter "rtp_out" (entre rtph264pay y webrtcbin)
     GstElement *rtp_out = gst_bin_get_by_name(GST_BIN(pipeline_), "rtp_out");
     if (!rtp_out)
+    {
+        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         return false;
+    }
     GstPad *rtp_src = gst_element_get_static_pad(rtp_out, "src");
     gst_object_unref(rtp_out);
     if (!rtp_src)
+    {
+        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         return false;
+    }
 
     // 1. Desconectar y liberar el pad request del webrtcbin viejo
     gst_pad_unlink(rtp_src, webrtc_sink_pad_);
@@ -534,7 +562,7 @@ bool GStreamerManager::restartWebRtcBin()
 
     // 2. Destruir el webrtcbin viejo (set NULL → remove → pipeline lo unrefea)
     gst_element_set_state(webrtcbin_, GST_STATE_NULL);
-    gst_bin_remove(GST_BIN(pipeline_), webrtcbin_); // bin libera su ref → destruye
+    gst_bin_remove(GST_BIN(pipeline_), webrtcbin_);
     webrtcbin_ = nullptr;
 
     // 3. Crear y configurar el nuevo webrtcbin
@@ -542,6 +570,7 @@ bool GStreamerManager::restartWebRtcBin()
     if (!webrtcbin_)
     {
         gst_object_unref(rtp_src);
+        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         return false;
     }
 
@@ -573,6 +602,9 @@ bool GStreamerManager::restartWebRtcBin()
     }
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
+    // Forzar IDR exactamente cuando ICE está listo para enviar: el cliente
+    // necesita un keyframe como primer frame decodable de la nueva sesión.
+    g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
 
     // 4. Añadir al pipeline y enlazar con rtp_out
     gst_bin_add(GST_BIN(pipeline_), webrtcbin_);
@@ -588,12 +620,18 @@ bool GStreamerManager::restartWebRtcBin()
             webrtc_sink_pad_ = nullptr;
         }
         gst_object_unref(rtp_src);
+        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         return false;
     }
     gst_object_unref(rtp_src);
 
-    // 5. Sincronizar estado con el pipeline (→ PLAYING)
+    // 5. Sincronizar estado y reanudar el pipeline
     gst_element_sync_state_with_parent(webrtcbin_);
+    gst_element_set_state(pipeline_, GST_STATE_PLAYING);
+
+    // Forzar IDR ahora: aunque el cliente aún no se conectó, el frame se
+    // guardará en el encoder/h264parse hasta que fluya por la nueva sesión.
+    forceKeyframe();
 
     std::cout << "🔄 WebRTC bin reemplazado (pipewiresrc sigue corriendo)\n";
     return true;
