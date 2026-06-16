@@ -1,5 +1,6 @@
 #include "Home.h"
 #include "../../controller/Homecontroller/HomeController.h"
+#include "version.h"
 
 static void on_button_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->requestPermissions();
@@ -140,6 +141,10 @@ static const char* APP_CSS =
     "}"
     "button.cancel-btn:active {"
     "  background-color: #e07090;"
+    "}"
+    ".version-label {"
+    "  color: #7f849c;"
+    "  font-size: 11px;"
     "}";
 
 Home::Home() {
@@ -229,6 +234,15 @@ Home::Home() {
     g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_cancel_clicked), this);
     gtk_box_pack_start(GTK_BOX(btn_area), cancel_button, FALSE, FALSE, 0);
     gtk_widget_set_no_show_all(cancel_button, TRUE);
+
+    std::string version_text = "v" + std::to_string(APP_VERSION_MAJOR) + "." +
+                               std::to_string(APP_VERSION_MINOR) + "." +
+                               std::to_string(APP_VERSION_PATCH);
+    GtkWidget* version_label = gtk_label_new(version_text.c_str());
+    gtk_style_context_add_class(gtk_widget_get_style_context(version_label), "version-label");
+    gtk_widget_set_halign(version_label, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top(version_label, 12);
+    gtk_box_pack_start(GTK_BOX(center), version_label, FALSE, FALSE, 0);
 }
 
 static void reset_status_classes(GtkStyleContext* dot, GtkStyleContext* lbl) {
