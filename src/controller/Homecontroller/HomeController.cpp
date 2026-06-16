@@ -97,11 +97,16 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         gm->createOffer();
     });
 
+    session_active_->store(true);
     auto* pm_ptr = portal_manager_.get();
-    webrtc_signaling_->setOnClientDisconnected([pm_ptr, gm]() {
-        pm_ptr->requestPipeWireFd([gm](int fd) {
-            if (fd < 0) {
-                std::cerr << "[HomeController] No se pudo obtener un fd de PipeWire nuevo para reconectar\n";
+    auto active = session_active_;
+    webrtc_signaling_->setOnClientDisconnected([pm_ptr, gm, active]() {
+        pm_ptr->requestPipeWireFd([gm, active](int fd) {
+            if (fd < 0 || !active->load()) {
+                if (fd >= 0)
+                    std::cerr << "[HomeController] Reconexión cancelada (sesión detenida)\n";
+                else
+                    std::cerr << "[HomeController] No se pudo obtener un fd de PipeWire nuevo para reconectar\n";
                 return;
             }
             gm->restartPipeline(fd);
@@ -202,6 +207,11 @@ void HomeController::handleOpenSettings() {
 }
 
 void HomeController::handleStopCapture() {
+    // Cancela cualquier reconexión pendiente antes de detener los servicios,
+    // evitando que el worker de PortalManager llame a restartPipeline() sobre
+    // un GStreamerManager ya destruido.
+    session_active_->store(false);
+
     // Update UI immediately from the GTK main loop (safe from any thread)
     struct Ctx { Home* view; bool connected; };
     auto* ctx = new Ctx{view_, device_connected_};

@@ -132,6 +132,7 @@ void PortalManager::closeSession() {
     dbus_connection_flush(connection_);
     dbus_message_unref(msg);
     std::cout << "Portal session closed: " << session_handle_ << "\n";
+    session_handle_.clear();
 }
 
 void PortalManager::createSession() {
