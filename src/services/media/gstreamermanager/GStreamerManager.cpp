@@ -6,6 +6,8 @@
 #include <nice/agent.h>
 #include <iostream>
 #include <string>
+#include <mutex>
+#include <condition_variable>
 
 GStreamerManager::GStreamerManager() {}
 
@@ -533,50 +535,68 @@ bool GStreamerManager::restartWebRtcBin()
     if (!pipeline_ || !webrtcbin_ || !webrtc_sink_pad_)
         return false;
 
-    // Pausar el pipeline para que el encoder no intente hacer push durante el
-    // gap en que rtp_out no tiene sink: eso causaba "Failed to push one frame"
-    // y ponía al encoder en estado ERROR, bloqueando el stream permanentemente.
-    gst_element_set_state(pipeline_, GST_STATE_PAUSED);
-    gst_element_get_state(pipeline_, nullptr, nullptr, 200 * GST_MSECOND);
-
-    // Encontrar el capsfilter "rtp_out" (entre rtph264pay y webrtcbin)
     GstElement *rtp_out = gst_bin_get_by_name(GST_BIN(pipeline_), "rtp_out");
-    if (!rtp_out)
-    {
-        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
-        return false;
-    }
+    if (!rtp_out) return false;
     GstPad *rtp_src = gst_element_get_static_pad(rtp_out, "src");
     gst_object_unref(rtp_out);
-    if (!rtp_src)
+    if (!rtp_src) return false;
+
+    // Bloquear el streaming thread en rtp_out src para que el encoder no
+    // intente hacer push durante el gap en que rtp_out no tiene sink aguas abajo.
+    // Esto evita el "Failed to push one frame" sin pausar el pipeline completo
+    // (pausar el pipeline rompía la negociación de caps DMABuf de pipewiresrc).
+    struct PadBlock {
+        std::mutex mtx;
+        std::condition_variable cv;
+        bool fired{false};
+    } block;
+
+    gulong probe_id = gst_pad_add_probe(
+        rtp_src,
+        GST_PAD_PROBE_TYPE_BLOCK_DOWNSTREAM,
+        [](GstPad *, GstPadProbeInfo *, gpointer data) -> GstPadProbeReturn {
+            auto *b = static_cast<PadBlock *>(data);
+            {
+                std::lock_guard<std::mutex> lock(b->mtx);
+                b->fired = true;
+            }
+            b->cv.notify_one();
+            return GST_PAD_PROBE_OK; // mantiene el bloqueo hasta que removamos el probe
+        },
+        &block, nullptr);
+
+    // Esperar máx 100 ms a que el probe dispare. Si la pantalla está estática,
+    // pipewiresrc no empuja frames y el probe nunca dispara; en ese caso el
+    // swap igualmente es seguro porque el encoder tampoco está intentando push.
     {
-        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
-        return false;
+        std::unique_lock<std::mutex> lock(block.mtx);
+        block.cv.wait_for(lock, std::chrono::milliseconds(100),
+                          [&block] { return block.fired; });
     }
 
-    // 1. Desconectar y liberar el pad request del webrtcbin viejo
+    // CRÍTICO: deslinkar rtp_src ANTES de gst_element_set_state(NULL).
+    // Si aún estuviera enlazado, la transición NULL dispararía eventos FLUSH
+    // que viajan upstream por rtp_src — el cual está bloqueado con el probe —
+    // produciendo deadlock (el FLUSH necesita el STREAM_LOCK que el probe sostiene).
     gst_pad_unlink(rtp_src, webrtc_sink_pad_);
     gst_element_release_request_pad(webrtcbin_, webrtc_sink_pad_);
     gst_object_unref(webrtc_sink_pad_);
     webrtc_sink_pad_ = nullptr;
 
-    // 2. Destruir el webrtcbin viejo (set NULL → remove → pipeline lo unrefea)
-    gst_element_set_state(webrtcbin_, GST_STATE_NULL);
+    gst_element_set_state(webrtcbin_, GST_STATE_NULL); // seguro: pad ya desenlazado
     gst_bin_remove(GST_BIN(pipeline_), webrtcbin_);
     webrtcbin_ = nullptr;
 
-    // 3. Crear y configurar el nuevo webrtcbin
+    // Crear y configurar el nuevo webrtcbin
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtcbin");
     if (!webrtcbin_)
     {
+        gst_pad_remove_probe(rtp_src, probe_id);
         gst_object_unref(rtp_src);
-        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         return false;
     }
 
-    g_object_set(G_OBJECT(webrtcbin_),
-                 "bundle-policy", 3 /* MAX_BUNDLE */,
-                 NULL);
+    g_object_set(G_OBJECT(webrtcbin_), "bundle-policy", 3 /* MAX_BUNDLE */, NULL);
 
     GObject *ice_agent = nullptr;
     g_object_get(G_OBJECT(webrtcbin_), "ice-agent", &ice_agent, NULL);
@@ -602,11 +622,8 @@ bool GStreamerManager::restartWebRtcBin()
     }
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
-    // Forzar IDR exactamente cuando ICE está listo para enviar: el cliente
-    // necesita un keyframe como primer frame decodable de la nueva sesión.
     g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
 
-    // 4. Añadir al pipeline y enlazar con rtp_out
     gst_bin_add(GST_BIN(pipeline_), webrtcbin_);
 
     webrtc_sink_pad_ = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
@@ -619,18 +636,21 @@ bool GStreamerManager::restartWebRtcBin()
             gst_object_unref(webrtc_sink_pad_);
             webrtc_sink_pad_ = nullptr;
         }
+        gst_pad_remove_probe(rtp_src, probe_id);
         gst_object_unref(rtp_src);
-        gst_element_set_state(pipeline_, GST_STATE_PLAYING);
         return false;
     }
+
+    gst_element_sync_state_with_parent(webrtcbin_);
+
+    // Desbloquear el streaming thread: el frame retenido por el probe se empujará
+    // ahora hacia el nuevo webrtcbin. GStreamer enviará el evento CAPS antes del
+    // primer buffer, por lo que la negociación es transparente.
+    gst_pad_remove_probe(rtp_src, probe_id);
     gst_object_unref(rtp_src);
 
-    // 5. Sincronizar estado y reanudar el pipeline
-    gst_element_sync_state_with_parent(webrtcbin_);
-    gst_element_set_state(pipeline_, GST_STATE_PLAYING);
-
-    // Forzar IDR ahora: aunque el cliente aún no se conectó, el frame se
-    // guardará en el encoder/h264parse hasta que fluya por la nueva sesión.
+    // IDR adicional para asegurar que el cliente reciba un keyframe decodable.
+    // onIceConnectionStateCb también forzará otro IDR cuando ICE esté conectado.
     forceKeyframe();
 
     std::cout << "🔄 WebRTC bin reemplazado (pipewiresrc sigue corriendo)\n";

@@ -99,13 +99,16 @@ void HomeController::onPortalComplete(const std::string& session_handle,
 
     session_active_->store(true);
     auto active = session_active_;
-    webrtc_signaling_->setOnClientDisconnected([gm, active]() {
+    webrtc_signaling_->setOnClientDisconnected([this, active]() {
         if (!active->load())
             return;
-        // Solo reemplazamos el webrtcbin, dejando pipewiresrc y el encoder
-        // corriendo para evitar el reconecte a PipeWire que causaba pantalla negra.
-        if (!gm->restartWebRtcBin())
-            std::cerr << "[HomeController] Error al reiniciar el WebRTC bin\n";
+        // Parar captura desde el thread de GTK: no se puede llamar a
+        // handleStopCapture() directamente desde el acceptLoop de WebRtcSignaling
+        // porque eso destruiría el thread mientras sigue ejecutándose.
+        g_idle_add([](gpointer data) -> gboolean {
+            static_cast<HomeController *>(data)->handleStopCapture();
+            return G_SOURCE_REMOVE;
+        }, this);
     });
 
     webrtc_signaling_->setOnMessage([gm](const std::string& line) {
