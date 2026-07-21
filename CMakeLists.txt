@@ -81,6 +81,7 @@ target_link_libraries(skreen_desktop
     gstreamer_manager
     home_controller
     portal_manager
+    monitor_control
     input_server
     adb_monitor
     config_manager

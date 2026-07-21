@@ -5,6 +5,7 @@
 #include <atomic>
 #include <thread>
 #include "../../services/system/portalmanager/PortalManager.h"
+#include "../../services/system/monitorcontrol/MonitorControl.h"
 #include "../../services/media/gstreamermanager/GStreamerManager.h"
 #include "../../services/input/InputServer.h"
 #include "../../services/adb/AdbMonitor.h"
@@ -23,11 +24,13 @@ public:
     void onPortalComplete(const std::string& session_handle, uint32_t node_id, int fd);
     void onGStreamerError(const std::string& message);
     void handleStopCapture();
+    bool handleMonitorToggle(bool enabled);
 private:
     Home* view_;
     bool device_connected_ = false;
     StreamConfig config_;
     ConfigManager config_manager_;
+    std::unique_ptr<MonitorControl> monitor_control_;
     // Destrucción en orden inverso: gstreamer_manager_ debe sobrevivir a
     // portal_manager_ porque el worker thread del portal puede llamar a
     // gm->restartPipeline() hasta que su join() retorne en ~PortalManager().

@@ -14,6 +14,16 @@ static void on_settings_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->openSettings();
 }
 
+// GtkSwitch separa "active" (feedback visual inmediato al click) de "state"
+// (estado real). Manejamos "state-set" en vez de "notify::active" para poder
+// hacer la llamada ioctl (potencialmente fallida) antes de confirmar el
+// nuevo estado, y revertir el switch si falla.
+static gboolean on_monitor_switch_state_set(GtkSwitch* sw, gboolean state, gpointer data) {
+    bool applied = static_cast<Home*>(data)->monitorToggled(state);
+    gtk_switch_set_state(sw, applied ? state : !state);
+    return TRUE;
+}
+
 void Home::requestPermissions() {
     if (on_request_permissions_callback_) on_request_permissions_callback_();
 }
@@ -196,6 +206,8 @@ Home::Home() {
     monitor_switch = gtk_switch_new();
     gtk_widget_set_valign(monitor_switch, GTK_ALIGN_CENTER);
     gtk_widget_set_tooltip_text(monitor_switch, "Enable monitor");
+    monitor_switch_handler_id_ = g_signal_connect(
+        monitor_switch, "state-set", G_CALLBACK(on_monitor_switch_state_set), this);
     gtk_box_pack_start(GTK_BOX(monitor_box), monitor_switch, FALSE, FALSE, 0);
 
     GtkWidget* monitor_on_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
@@ -278,6 +290,18 @@ static void reset_status_classes(GtkStyleContext* dot, GtkStyleContext* lbl) {
     gtk_style_context_remove_class(lbl, "status-idle");
     gtk_style_context_remove_class(lbl, "status-ready");
     gtk_style_context_remove_class(lbl, "status-active");
+}
+
+bool Home::monitorToggled(bool enabled) {
+    if (!on_monitor_toggle_callback_) return true;
+    return on_monitor_toggle_callback_(enabled);
+}
+
+void Home::setMonitorSwitchState(bool enabled) {
+    g_signal_handler_block(monitor_switch, monitor_switch_handler_id_);
+    gtk_switch_set_active(GTK_SWITCH(monitor_switch), enabled);
+    gtk_switch_set_state(GTK_SWITCH(monitor_switch), enabled);
+    g_signal_handler_unblock(monitor_switch, monitor_switch_handler_id_);
 }
 
 void Home::setTransmitButtonEnabled(bool enabled) {

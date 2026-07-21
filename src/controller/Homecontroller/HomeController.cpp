@@ -15,6 +15,7 @@ HomeController::HomeController(Home* home)
 
     gstreamer_manager_ = std::make_unique<GStreamerManager>();
     portal_manager_ = std::make_unique<PortalManager>();
+    monitor_control_ = std::make_unique<MonitorControl>();
 
     portal_manager_->setPortalCallback(
         [this](const std::string& session_handle, uint32_t node_id, int fd) {
@@ -23,6 +24,11 @@ HomeController::HomeController(Home* home)
     view_->setOnRequestPermissionsCallback([this]() { handleRequestPermissions(); });
     view_->setOnCancelTransmissionCallback([this]() { handleStopCapture(); });
     view_->setOnSettingsCallback([this]() { handleOpenSettings(); });
+    view_->setOnMonitorToggleCallback([this](bool enabled) { return handleMonitorToggle(enabled); });
+
+    bool monitor_enabled = false;
+    if (monitor_control_->isEnabled(monitor_enabled))
+        view_->setMonitorSwitchState(monitor_enabled);
 
     adb_monitor_ = std::make_unique<AdbMonitor>();
     adb_monitor_->setOnDeviceConnected([this]() {
@@ -191,6 +197,14 @@ void HomeController::onGStreamerError(const std::string& error) {
     handleStopCapture();
 }
 
+
+bool HomeController::handleMonitorToggle(bool enabled) {
+    if (!monitor_control_ || !monitor_control_->setEnabled(enabled)) {
+        std::cerr << "Failed to " << (enabled ? "enable" : "disable") << " the virtual monitor\n";
+        return false;
+    }
+    return true;
+}
 
 void HomeController::handleOpenSettings() {
     auto* s = new Settings(view_->getGtkWindow(), config_);
