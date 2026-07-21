@@ -14,13 +14,31 @@ static void on_settings_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->openSettings();
 }
 
-// GtkSwitch separa "active" (feedback visual inmediato al click) de "state"
-// (estado real). Manejamos "state-set" en vez de "notify::active" para poder
-// hacer la llamada ioctl (potencialmente fallida) antes de confirmar el
-// nuevo estado, y revertir el switch si falla.
+// GtkSwitch splits "active" (immediate visual feedback on click) from
+// "state" (the real state). We handle "state-set" instead of
+// "notify::active" so we can make the (potentially failing) ioctl call
+// before confirming the new state, and revert the switch if it fails.
+//
+// Turning off the virtual monitor (SET_ENABLED 0) is a point of no return
+// within the current GNOME session: turning it back on afterwards breaks
+// mutter's plane reassignment (it stops showing up in Display Settings
+// until logout). So we confirm with the user before turning it off, and
+// once it's off the switch gets locked so they can't try turning it back
+// on in the same session.
 static gboolean on_monitor_switch_state_set(GtkSwitch* sw, gboolean state, gpointer data) {
-    bool applied = static_cast<Home*>(data)->monitorToggled(state);
+    auto* home = static_cast<Home*>(data);
+
+    if (!state && !home->confirmDisableMonitor()) {
+        gtk_switch_set_state(sw, TRUE);
+        return TRUE;
+    }
+
+    bool applied = home->monitorToggled(state);
     gtk_switch_set_state(sw, applied ? state : !state);
+
+    if (applied && !state)
+        home->lockMonitorSwitch();
+
     return TRUE;
 }
 
@@ -295,6 +313,33 @@ static void reset_status_classes(GtkStyleContext* dot, GtkStyleContext* lbl) {
 bool Home::monitorToggled(bool enabled) {
     if (!on_monitor_toggle_callback_) return true;
     return on_monitor_toggle_callback_(enabled);
+}
+
+bool Home::confirmDisableMonitor() {
+    GtkWidget* dialog = gtk_message_dialog_new(
+        GTK_WINDOW(window),
+        static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
+        GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
+        "Turn off the virtual monitor?");
+    gtk_message_dialog_format_secondary_text(
+        GTK_MESSAGE_DIALOG(dialog),
+        "Due to a GNOME limitation with virtual monitors, once it's turned "
+        "off you'll need to log out and back in to turn it on again.");
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Cancel", GTK_RESPONSE_CANCEL);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Turn off", GTK_RESPONSE_ACCEPT);
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
+
+    int response = gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+
+    return response == GTK_RESPONSE_ACCEPT;
+}
+
+void Home::lockMonitorSwitch() {
+    gtk_widget_set_sensitive(monitor_switch, FALSE);
+    gtk_widget_set_tooltip_text(
+        monitor_switch,
+        "Monitor off: log out and back in to turn it on again");
 }
 
 void Home::setMonitorSwitchState(bool enabled) {

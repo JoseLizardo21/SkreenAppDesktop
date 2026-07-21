@@ -18,9 +18,9 @@ class Home {
         void setOnSettingsCallback(std::function<void()> callback) {
             on_settings_callback_ = callback;
         }
-        // Llamado cuando el usuario mueve el switch. Debe devolver true si el
-        // monitor quedó en el estado pedido (enabled), false si falló y el
-        // switch debe revertir visualmente.
+        // Called when the user moves the switch. Should return true if the
+        // monitor ended up in the requested state (enabled), false if it
+        // failed and the switch should revert visually.
         void setOnMonitorToggleCallback(std::function<bool(bool)> callback) {
             on_monitor_toggle_callback_ = callback;
         }
@@ -28,8 +28,15 @@ class Home {
         void cancelTransmission();
         void openSettings();
         bool monitorToggled(bool enabled);
-        // Refleja el estado real del monitor en el switch sin disparar
-        // setOnMonitorToggleCallback (usar al inicializar la UI).
+        // Shows the confirmation dialog for turning off the monitor. Returns
+        // true if the user confirmed.
+        bool confirmDisableMonitor();
+        // Locks the switch in its current position (insensitive) because
+        // turning the monitor back on in this GNOME session would break
+        // mutter.
+        void lockMonitorSwitch();
+        // Reflects the real monitor state on the switch without triggering
+        // setOnMonitorToggleCallback (used when initializing the UI).
         void setMonitorSwitchState(bool enabled);
         void setTransmitButtonEnabled(bool enabled);
         void setTransmitting(bool transmitting);
