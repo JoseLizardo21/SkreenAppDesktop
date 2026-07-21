@@ -27,6 +27,7 @@ class Home {
         GtkWindow* getGtkWindow() { return GTK_WINDOW(window); }
     private:
         GtkWidget* window;
+        GtkWidget* monitor_switch;
         GtkWidget* transmit_button;
         GtkWidget* cancel_button;
         GtkWidget* status_label;

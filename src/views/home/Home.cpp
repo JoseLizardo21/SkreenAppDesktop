@@ -73,6 +73,12 @@ static const char* APP_CSS =
     "  color: #89b4fa;"
     "  opacity: 0.9;"
     "}"
+    ".monitor-icon-off {"
+    "  color: #6c7086;"
+    "}"
+    ".monitor-icon-on {"
+    "  color: #89b4fa;"
+    "}"
     ".status-row label {"
     "  color: #6c7086;"
     "  font-size: 13px;"
@@ -177,6 +183,26 @@ Home::Home() {
 
     GtkWidget* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(window), outer);
+
+    GtkWidget* monitor_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_widget_set_halign(monitor_box, GTK_ALIGN_END);
+    gtk_widget_set_margin_top(monitor_box, 12);
+    gtk_widget_set_margin_end(monitor_box, 16);
+
+    GtkWidget* monitor_off_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+    gtk_style_context_add_class(gtk_widget_get_style_context(monitor_off_icon), "monitor-icon-off");
+    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_off_icon, FALSE, FALSE, 0);
+
+    monitor_switch = gtk_switch_new();
+    gtk_widget_set_valign(monitor_switch, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(monitor_switch, "Enable monitor");
+    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_switch, FALSE, FALSE, 0);
+
+    GtkWidget* monitor_on_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+    gtk_style_context_add_class(gtk_widget_get_style_context(monitor_on_icon), "monitor-icon-on");
+    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_on_icon, FALSE, FALSE, 0);
+
+    gtk_box_pack_start(GTK_BOX(outer), monitor_box, FALSE, FALSE, 0);
 
     GtkWidget* center = gtk_box_new(GTK_ORIENTATION_VERTICAL, 18);
     gtk_widget_set_valign(center, GTK_ALIGN_CENTER);
