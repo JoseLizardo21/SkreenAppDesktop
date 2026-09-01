@@ -208,6 +208,8 @@ bool GStreamerManager::createElements()
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
     g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
+    if (connection_mode_ == ConnectionMode::Wifi)
+        g_signal_connect(webrtcbin_, "request-aux-sender", G_CALLBACK(onRequestAuxSender), this);
 
     std::cout << "  ✓ All elements created\n";
     return true;
@@ -254,6 +256,34 @@ void GStreamerManager::configureIceForMode(GObject *ice_agent)
                      "max-rtp-port", kIceWifiUdpPortMax,
                      NULL);
     }
+}
+
+GstElement *GStreamerManager::onRequestAuxSender(GstElement *webrtcbin, GstWebRTCDTLSTransport *transport, gpointer user_data)
+{
+    (void)webrtcbin;
+    (void)transport;
+    (void)user_data;
+
+    GstElement *rtx = gst_element_factory_make("rtprtxsend", NULL);
+    GstStructure *pt_map = gst_structure_new(
+        "application/x-rtp-pt-map",
+        "96", G_TYPE_UINT, kRtxPayloadType,
+        NULL);
+    g_object_set(rtx, "payload-type-map", pt_map, NULL);
+    gst_structure_free(pt_map);
+
+    GstElement *bin = gst_bin_new(NULL);
+    gst_bin_add(GST_BIN(bin), rtx);
+
+    GstPad *src_pad = gst_element_get_static_pad(rtx, "src");
+    gst_element_add_pad(bin, gst_ghost_pad_new("src", src_pad));
+    gst_object_unref(src_pad);
+
+    GstPad *sink_pad = gst_element_get_static_pad(rtx, "sink");
+    gst_element_add_pad(bin, gst_ghost_pad_new("sink", sink_pad));
+    gst_object_unref(sink_pad);
+
+    return bin;
 }
 
 bool GStreamerManager::configurePipeWireSource()
@@ -631,6 +661,8 @@ bool GStreamerManager::restartWebRtcBin()
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
     g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
+    if (connection_mode_ == ConnectionMode::Wifi)
+        g_signal_connect(webrtcbin_, "request-aux-sender", G_CALLBACK(onRequestAuxSender), this);
 
     gst_bin_add(GST_BIN(pipeline_), webrtcbin_);
 
