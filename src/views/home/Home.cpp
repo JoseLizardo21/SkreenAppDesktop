@@ -21,6 +21,15 @@ static void on_settings_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->openSettings();
 }
 
+// Conectado solo al radio de WiFi: GTK emite "toggled" en ambos radios del grupo
+// cuando cambia la selección, así que basta un único handler mirando su propio
+// estado (true = WiFi quedó seleccionado, false = Cable quedó seleccionado).
+static void on_wifi_radio_toggled(GtkWidget* radio, gpointer data) {
+    auto* home = static_cast<Home*>(data);
+    bool wifi_active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(radio));
+    home->connectionModeToggled(wifi_active);
+}
+
 // GtkSwitch splits "active" (immediate visual feedback on click) from
 // "state" (the real state). We handle "state-set" instead of
 // "notify::active" so we can make the (potentially failing) ioctl call
@@ -256,6 +265,30 @@ Home::Home() {
     gtk_widget_set_halign(icon, GTK_ALIGN_CENTER);
     gtk_box_pack_start(GTK_BOX(center), icon, FALSE, FALSE, 0);
 
+    // Selector de modo de conexión: siempre visible (a diferencia del switch de
+    // monitor, que está detrás de SKREEN_ACTIVE_MODULE_DRIVER).
+    GtkWidget* mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_set_halign(mode_row, GTK_ALIGN_CENTER);
+
+    cable_radio_ = gtk_radio_button_new_with_label(nullptr, "Cable");
+    gtk_box_pack_start(GTK_BOX(mode_row), cable_radio_, FALSE, FALSE, 0);
+
+    wifi_radio_ = gtk_radio_button_new_with_label_from_widget(
+        GTK_RADIO_BUTTON(cable_radio_), "WiFi");
+    gtk_box_pack_start(GTK_BOX(mode_row), wifi_radio_, FALSE, FALSE, 0);
+
+    connection_mode_handler_id_ = g_signal_connect(
+        wifi_radio_, "toggled", G_CALLBACK(on_wifi_radio_toggled), this);
+
+    gtk_box_pack_start(GTK_BOX(center), mode_row, FALSE, FALSE, 0);
+
+    local_ip_label_ = gtk_label_new("");
+    gtk_label_set_selectable(GTK_LABEL(local_ip_label_), TRUE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(local_ip_label_), "status-idle");
+    gtk_widget_set_halign(local_ip_label_, GTK_ALIGN_CENTER);
+    gtk_widget_set_no_show_all(local_ip_label_, TRUE); // oculto hasta setLocalIpAddresses()
+    gtk_box_pack_start(GTK_BOX(center), local_ip_label_, FALSE, FALSE, 0);
+
     GtkWidget* status_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_widget_set_halign(status_row, GTK_ALIGN_CENTER);
     gtk_style_context_add_class(gtk_widget_get_style_context(status_row), "status-row");
@@ -324,6 +357,11 @@ bool Home::monitorToggled(bool enabled) {
     return on_monitor_toggle_callback_(enabled);
 }
 
+void Home::connectionModeToggled(bool wifi_selected) {
+    if (on_connection_mode_changed_callback_)
+        on_connection_mode_changed_callback_(wifi_selected ? ConnectionMode::Wifi : ConnectionMode::Cable);
+}
+
 bool Home::confirmDisableMonitor() {
     GtkWidget* dialog = gtk_message_dialog_new(
         GTK_WINDOW(window),
@@ -375,6 +413,48 @@ void Home::setDeviceConnected(bool connected) {
         gtk_style_context_add_class(lbl_ctx, "status-ready");
     } else {
         gtk_label_set_text(GTK_LABEL(status_label), "Waiting for device...");
+        gtk_style_context_add_class(dot_ctx, "dot-idle");
+        gtk_style_context_add_class(lbl_ctx, "status-idle");
+    }
+}
+
+void Home::setConnectionMode(ConnectionMode mode) {
+    g_signal_handler_block(wifi_radio_, connection_mode_handler_id_);
+    gtk_toggle_button_set_active(
+        GTK_TOGGLE_BUTTON(mode == ConnectionMode::Wifi ? wifi_radio_ : cable_radio_), TRUE);
+    g_signal_handler_unblock(wifi_radio_, connection_mode_handler_id_);
+}
+
+void Home::setLocalIpAddresses(const std::vector<std::string>& ips) {
+    if (ips.empty()) {
+        gtk_widget_hide(local_ip_label_);
+        return;
+    }
+    std::string text = "Tu PC: ";
+    for (size_t i = 0; i < ips.size(); ++i) {
+        if (i > 0) text += ", ";
+        text += ips[i];
+    }
+    gtk_label_set_text(GTK_LABEL(local_ip_label_), text.c_str());
+    gtk_widget_show(local_ip_label_);
+}
+
+void Home::setConnectionModeSelectorEnabled(bool enabled) {
+    gtk_widget_set_sensitive(cable_radio_, enabled);
+    gtk_widget_set_sensitive(wifi_radio_, enabled);
+}
+
+void Home::setWifiReady(bool ready) {
+    GtkStyleContext* dot_ctx = gtk_widget_get_style_context(status_dot);
+    GtkStyleContext* lbl_ctx = gtk_widget_get_style_context(status_label);
+    reset_status_classes(dot_ctx, lbl_ctx);
+
+    if (ready) {
+        gtk_label_set_text(GTK_LABEL(status_label), "Listo para conectar por WiFi");
+        gtk_style_context_add_class(dot_ctx, "dot-ready");
+        gtk_style_context_add_class(lbl_ctx, "status-ready");
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "Selecciona WiFi para ver tu IP");
         gtk_style_context_add_class(dot_ctx, "dot-idle");
         gtk_style_context_add_class(lbl_ctx, "status-idle");
     }

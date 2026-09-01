@@ -193,18 +193,33 @@ bool GStreamerManager::createElements()
                  "pt", 96,
                  NULL);
 
-    // webrtcbin: un solo m-line de video, sin STUN/TURN (todo es loopback vía adb)
+    // webrtcbin: un solo m-line de video, sin STUN/TURN (LAN directa o loopback vía adb)
     g_object_set(G_OBJECT(webrtcbin_),
                  "bundle-policy", 3 /* GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE */,
                  NULL);
 
-    // Forzar ICE-TCP: adb reverse/forward solo tunelizan TCP, no UDP. Se desactiva
-    // la recolección de candidatos UDP y se fija el puerto TCP a kIceTcpPort para
-    // poder reenviarlo con un único "adb reverse tcp:9006 tcp:9006".
     GObject *ice_agent = nullptr;
     g_object_get(G_OBJECT(webrtcbin_), "ice-agent", &ice_agent, NULL);
     if (ice_agent)
     {
+        configureIceForMode(ice_agent);
+        g_object_unref(ice_agent);
+    }
+
+    g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
+    g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
+
+    std::cout << "  ✓ All elements created\n";
+    return true;
+}
+
+void GStreamerManager::configureIceForMode(GObject *ice_agent)
+{
+    if (connection_mode_ == ConnectionMode::Cable)
+    {
+        // Forzar ICE-TCP: adb reverse/forward solo tunelizan TCP, no UDP. Se desactiva
+        // la recolección de candidatos UDP y se fija el puerto TCP a kIceTcpPort para
+        // poder reenviarlo con un único "adb reverse tcp:9006 tcp:9006".
         g_object_set(ice_agent,
                      "ice-udp", FALSE,
                      "ice-tcp", TRUE,
@@ -226,15 +241,19 @@ bool GStreamerManager::createElements()
             nice_agent_add_local_address(nice_agent, &loopback);
             g_object_unref(nice_agent);
         }
-
-        g_object_unref(ice_agent);
     }
-
-    g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
-    g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
-
-    std::cout << "  ✓ All elements created\n";
-    return true;
+    else // ConnectionMode::Wifi
+    {
+        // UDP+TCP habilitados: candidatos host en todas las interfaces de red
+        // reales (sin restricción a loopback), priorizando UDP para mejor
+        // latencia. libnice enumera automáticamente las interfaces locales.
+        g_object_set(ice_agent,
+                     "ice-udp", TRUE,
+                     "ice-tcp", TRUE,
+                     "min-rtp-port", kIceWifiUdpPortMin,
+                     "max-rtp-port", kIceWifiUdpPortMax,
+                     NULL);
+    }
 }
 
 bool GStreamerManager::configurePipeWireSource()
@@ -518,7 +537,11 @@ bool GStreamerManager::startCapture()
     }
 
     is_capturing_ = true;
-    std::cout << "✅ Streaming via WebRTC (ICE-TCP puerto " << kIceTcpPort << ")\n";
+    if (connection_mode_ == ConnectionMode::Cable)
+        std::cout << "✅ Streaming via WebRTC (ICE-TCP puerto " << kIceTcpPort << ")\n";
+    else
+        std::cout << "✅ Streaming via WebRTC (WiFi, ICE-UDP " << kIceWifiUdpPortMin
+                  << "-" << kIceWifiUdpPortMax << " + ICE-TCP)\n";
     return true;
 }
 
@@ -602,22 +625,7 @@ bool GStreamerManager::restartWebRtcBin()
     g_object_get(G_OBJECT(webrtcbin_), "ice-agent", &ice_agent, NULL);
     if (ice_agent)
     {
-        g_object_set(ice_agent,
-                     "ice-udp", FALSE,
-                     "ice-tcp", TRUE,
-                     "min-rtp-port", kIceTcpPort,
-                     "max-rtp-port", kIceTcpPort,
-                     NULL);
-        NiceAgent *nice_agent = nullptr;
-        g_object_get(ice_agent, "agent", &nice_agent, NULL);
-        if (nice_agent)
-        {
-            NiceAddress loopback;
-            nice_address_init(&loopback);
-            nice_address_set_from_string(&loopback, "127.0.0.1");
-            nice_agent_add_local_address(nice_agent, &loopback);
-            g_object_unref(nice_agent);
-        }
+        configureIceForMode(ice_agent);
         g_object_unref(ice_agent);
     }
 
