@@ -31,6 +31,12 @@ make
 ./skreen_desktop
 ```
 
+Para habilitar el switch de encendido/apagado del monitor (desactivado por defecto):
+
+```bash
+SKREEN_ACTIVE_MODULE_DRIVER=1 ./skreen_desktop
+```
+
 # Empaquetar como RPM
 
 Asegúrate de tener `rpmbuild` instalado:
