@@ -1,6 +1,13 @@
 #include "Home.h"
 #include "../../controller/Homecontroller/HomeController.h"
 #include "version.h"
+#include <cstdlib>
+#include <cstring>
+
+bool Home::activeModuleDriver() {
+    const char* env = std::getenv("SKREEN_ACTIVE_MODULE_DRIVER");
+    return env && std::strcmp(env, "1") == 0;
+}
 
 static void on_button_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->requestPermissions();
@@ -212,27 +219,29 @@ Home::Home() {
     GtkWidget* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(window), outer);
 
-    GtkWidget* monitor_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    gtk_widget_set_halign(monitor_box, GTK_ALIGN_END);
-    gtk_widget_set_margin_top(monitor_box, 12);
-    gtk_widget_set_margin_end(monitor_box, 16);
+    if (activeModuleDriver()) {
+        GtkWidget* monitor_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        gtk_widget_set_halign(monitor_box, GTK_ALIGN_END);
+        gtk_widget_set_margin_top(monitor_box, 12);
+        gtk_widget_set_margin_end(monitor_box, 16);
 
-    GtkWidget* monitor_off_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
-    gtk_style_context_add_class(gtk_widget_get_style_context(monitor_off_icon), "monitor-icon-off");
-    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_off_icon, FALSE, FALSE, 0);
+        GtkWidget* monitor_off_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+        gtk_style_context_add_class(gtk_widget_get_style_context(monitor_off_icon), "monitor-icon-off");
+        gtk_box_pack_start(GTK_BOX(monitor_box), monitor_off_icon, FALSE, FALSE, 0);
 
-    monitor_switch = gtk_switch_new();
-    gtk_widget_set_valign(monitor_switch, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(monitor_switch, "Enable monitor");
-    monitor_switch_handler_id_ = g_signal_connect(
-        monitor_switch, "state-set", G_CALLBACK(on_monitor_switch_state_set), this);
-    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_switch, FALSE, FALSE, 0);
+        monitor_switch = gtk_switch_new();
+        gtk_widget_set_valign(monitor_switch, GTK_ALIGN_CENTER);
+        gtk_widget_set_tooltip_text(monitor_switch, "Enable monitor");
+        monitor_switch_handler_id_ = g_signal_connect(
+            monitor_switch, "state-set", G_CALLBACK(on_monitor_switch_state_set), this);
+        gtk_box_pack_start(GTK_BOX(monitor_box), monitor_switch, FALSE, FALSE, 0);
 
-    GtkWidget* monitor_on_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
-    gtk_style_context_add_class(gtk_widget_get_style_context(monitor_on_icon), "monitor-icon-on");
-    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_on_icon, FALSE, FALSE, 0);
+        GtkWidget* monitor_on_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+        gtk_style_context_add_class(gtk_widget_get_style_context(monitor_on_icon), "monitor-icon-on");
+        gtk_box_pack_start(GTK_BOX(monitor_box), monitor_on_icon, FALSE, FALSE, 0);
 
-    gtk_box_pack_start(GTK_BOX(outer), monitor_box, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(outer), monitor_box, FALSE, FALSE, 0);
+    }
 
     GtkWidget* center = gtk_box_new(GTK_ORIENTATION_VERTICAL, 18);
     gtk_widget_set_valign(center, GTK_ALIGN_CENTER);
@@ -336,6 +345,7 @@ bool Home::confirmDisableMonitor() {
 }
 
 void Home::lockMonitorSwitch() {
+    if (!monitor_switch) return;
     gtk_widget_set_sensitive(monitor_switch, FALSE);
     gtk_widget_set_tooltip_text(
         monitor_switch,
@@ -343,6 +353,7 @@ void Home::lockMonitorSwitch() {
 }
 
 void Home::setMonitorSwitchState(bool enabled) {
+    if (!monitor_switch) return;
     g_signal_handler_block(monitor_switch, monitor_switch_handler_id_);
     gtk_switch_set_active(GTK_SWITCH(monitor_switch), enabled);
     gtk_switch_set_state(GTK_SWITCH(monitor_switch), enabled);

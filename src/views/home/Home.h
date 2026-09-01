@@ -43,8 +43,13 @@ class Home {
         void setDeviceConnected(bool connected);
         GtkWindow* getGtkWindow() { return GTK_WINDOW(window); }
     private:
+        // Feature flag for the monitor enable/disable switch, read from the
+        // SKREEN_ACTIVE_MODULE_DRIVER env var (set to "1" to enable). Off by
+        // default until the feature is ready to ship.
+        static bool activeModuleDriver();
+
         GtkWidget* window;
-        GtkWidget* monitor_switch;
+        GtkWidget* monitor_switch = nullptr;
         gulong monitor_switch_handler_id_ = 0;
         GtkWidget* transmit_button;
         GtkWidget* cancel_button;
