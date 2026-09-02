@@ -11,7 +11,9 @@
 #include "../../services/adb/AdbMonitor.h"
 #include "../../services/notify/NotifyServer.h"
 #include "../../services/media/webrtcsignaling/WebRtcSignaling.h"
+#include "../../services/network/NetworkInfo.h"
 #include "config/ConfigManager.h"
+#include "config/ConnectionMode.h"
 
 class Home;
 
@@ -25,9 +27,11 @@ public:
     void onGStreamerError(const std::string& message);
     void handleStopCapture();
     bool handleMonitorToggle(bool enabled);
+    void handleConnectionModeChanged(ConnectionMode mode);
 private:
     Home* view_;
     bool device_connected_ = false;
+    ConnectionMode connection_mode_{ConnectionMode::Cable};
     StreamConfig config_;
     ConfigManager config_manager_;
     std::unique_ptr<MonitorControl> monitor_control_;

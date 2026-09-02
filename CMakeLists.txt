@@ -85,6 +85,7 @@ target_link_libraries(skreen_desktop
     input_server
     adb_monitor
     config_manager
+    network_info
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}
     ${NICE_LIBRARIES}

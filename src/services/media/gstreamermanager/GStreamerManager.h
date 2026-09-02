@@ -9,6 +9,11 @@
 #include <atomic>
 #include <chrono>
 #include "config/StreamConfig.h"
+#include "config/ConnectionMode.h"
+
+// Forward declaration en vez de incluir <gst/webrtc/webrtc.h> (requiere
+// GST_USE_UNSTABLE_API) solo para el tipo de un parámetro de callback.
+typedef struct _GstWebRTCDTLSTransport GstWebRTCDTLSTransport;
 
 class GStreamerManager {
 public:
@@ -23,6 +28,7 @@ public:
 
     void setErrorCallback(ErrorCallback callback) { error_callback_ = callback; }
     void setConfig(const StreamConfig& cfg) { config_ = cfg; }
+    void setConnectionMode(ConnectionMode mode) { connection_mode_ = mode; }
 
     bool initializePipeline(int fd, uint32_t node_id);
     bool startCapture();
@@ -49,6 +55,13 @@ public:
 private:
     // Puerto fijo de ICE-TCP para el medio WebRTC (adb reverse tcp:9006 tcp:9006)
     static constexpr guint kIceTcpPort = 9006;
+    // Rango de puertos UDP para ICE en modo WiFi (ver nota de firewall en el plan)
+    static constexpr guint kIceWifiUdpPortMin = 40000;
+    static constexpr guint kIceWifiUdpPortMax = 40020;
+    // PT de retransmisión RFC4588 para el H.264 (PT 96, ver rtp_out caps en linkElements)
+    static constexpr guint kRtxPayloadType = 97;
+
+    ConnectionMode connection_mode_{ConnectionMode::Cable};
 
     // Pipeline elements
     GstElement* pipeline_{nullptr};
@@ -92,6 +105,7 @@ private:
     bool configurePipeWireSource();
     bool linkElements();
     bool setupBusHandler();
+    void configureIceForMode(GObject* ice_agent);
 
     // vah264enc/vaapih264enc admiten memory:DMABuf y conversión por GPU
     // (vapostproc/vaapipostproc), evitando el round-trip CPU<->GPU de videoconvert
@@ -106,6 +120,11 @@ private:
     static void onOfferCreated(GstPromise* promise, gpointer user_data);
     static void onIceCandidateCb(GstElement* webrtcbin, guint mlineindex, gchar* candidate, gpointer user_data);
     static void onIceConnectionStateCb(GstElement* webrtcbin, GParamSpec* pspec, gpointer user_data);
+    // NACK/RTX (RFC4588): en WiFi, a diferencia de cable (ICE-TCP, retransmite a
+    // nivel de transporte), los paquetes UDP perdidos se pierden para siempre a
+    // menos que el emisor los retransmita a pedido. Este handler crea el bin
+    // rtprtxsend que webrtcbin inserta en la cadena de envío cuando lo pide.
+    static GstElement* onRequestAuxSender(GstElement* webrtcbin, GstWebRTCDTLSTransport* transport, gpointer user_data);
 
     void cleanup();
     void error(const std::string& message);

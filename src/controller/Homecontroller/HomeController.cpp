@@ -12,6 +12,7 @@ using json = nlohmann::json;
 HomeController::HomeController(Home* home)
     : view_(home) {
     config_ = config_manager_.load();
+    connection_mode_ = config_manager_.loadConnectionMode();
 
     gstreamer_manager_ = std::make_unique<GStreamerManager>();
     portal_manager_ = std::make_unique<PortalManager>();
@@ -25,14 +26,24 @@ HomeController::HomeController(Home* home)
     view_->setOnCancelTransmissionCallback([this]() { handleStopCapture(); });
     view_->setOnSettingsCallback([this]() { handleOpenSettings(); });
     view_->setOnMonitorToggleCallback([this](bool enabled) { return handleMonitorToggle(enabled); });
+    view_->setOnConnectionModeChangedCallback([this](ConnectionMode mode) { handleConnectionModeChanged(mode); });
 
     bool monitor_enabled = false;
     if (monitor_control_->isEnabled(monitor_enabled))
         view_->setMonitorSwitchState(monitor_enabled);
 
+    // Refleja el modo persistido sin disparar handleConnectionModeChanged.
+    view_->setConnectionMode(connection_mode_);
+    if (connection_mode_ == ConnectionMode::Wifi) {
+        view_->setLocalIpAddresses(NetworkInfo::localIpv4Addresses());
+        view_->setWifiReady(true);
+        view_->setTransmitButtonEnabled(true);
+    }
+
     adb_monitor_ = std::make_unique<AdbMonitor>();
     adb_monitor_->setOnDeviceConnected([this]() {
         device_connected_ = true;
+        if (connection_mode_ != ConnectionMode::Cable) return;
         auto* v = view_;
         g_idle_add([](gpointer data) -> gboolean {
             static_cast<Home*>(data)->setDeviceConnected(true);
@@ -42,6 +53,7 @@ HomeController::HomeController(Home* home)
     });
     adb_monitor_->setOnDeviceDisconnected([this]() {
         device_connected_ = false;
+        if (connection_mode_ != ConnectionMode::Cable) return;
         auto* v = view_;
         g_idle_add([](gpointer data) -> gboolean {
             static_cast<Home*>(data)->setDeviceConnected(false);
@@ -50,6 +62,21 @@ HomeController::HomeController(Home* home)
         }, v);
     });
     adb_monitor_->start();
+}
+
+void HomeController::handleConnectionModeChanged(ConnectionMode mode) {
+    connection_mode_ = mode;
+    config_manager_.saveConnectionMode(mode);
+
+    if (mode == ConnectionMode::Wifi) {
+        view_->setLocalIpAddresses(NetworkInfo::localIpv4Addresses());
+        view_->setWifiReady(true);
+        view_->setTransmitButtonEnabled(true);
+    } else {
+        view_->setLocalIpAddresses({});
+        view_->setTransmitButtonEnabled(device_connected_);
+        view_->setDeviceConnected(device_connected_);
+    }
 }
 
 HomeController::~HomeController() {
@@ -67,6 +94,7 @@ void HomeController::onPortalComplete(const std::string& session_handle,
     if (!gstreamer_manager_) return;
 
     gstreamer_manager_->setConfig(config_);
+    gstreamer_manager_->setConnectionMode(connection_mode_);
     if (!gstreamer_manager_->initializePipeline(fd, node_id)) {
         onGStreamerError("Failed to initialize pipeline");
         return;
@@ -182,14 +210,25 @@ void HomeController::onPortalComplete(const std::string& session_handle,
         auto* v = view_;
         g_idle_add([](gpointer data) -> gboolean {
             static_cast<Home*>(data)->setTransmitting(true);
+            static_cast<Home*>(data)->setConnectionModeSelectorEnabled(false);
             return G_SOURCE_REMOVE;
         }, v);
     }
-    std::cout << "WebRTC signaling TCP en puerto 9002\n";
-    std::cout << "Input control TCP en puerto 9003\n";
-    std::cout << "Notify TCP en puerto 9004\n";
-    std::cout << "WebRTC media (ICE-TCP) en puerto 9006\n";
-    std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003 && adb reverse tcp:9004 tcp:9004 && adb reverse tcp:9006 tcp:9006\n";
+
+    if (connection_mode_ == ConnectionMode::Cable) {
+        std::cout << "WebRTC signaling TCP en puerto 9002\n";
+        std::cout << "Input control TCP en puerto 9003\n";
+        std::cout << "Notify TCP en puerto 9004\n";
+        std::cout << "WebRTC media (ICE-TCP) en puerto 9006\n";
+        std::cout << "   Conectar con: adb reverse tcp:9002 tcp:9002 && adb reverse tcp:9003 tcp:9003 && adb reverse tcp:9004 tcp:9004 && adb reverse tcp:9006 tcp:9006\n";
+    } else {
+        std::cout << "WebRTC por WiFi. Puertos: señalización 9002, input 9003, notify 9004\n";
+        auto ips = NetworkInfo::localIpv4Addresses();
+        for (const auto& ip : ips)
+            std::cout << "   Conectar el móvil a: " << ip << "\n";
+        if (ips.empty())
+            std::cout << "   (No se detectó ninguna interfaz de red no-loopback)\n";
+    }
 }
 
 void HomeController::onGStreamerError(const std::string& error) {
@@ -225,14 +264,20 @@ void HomeController::handleStopCapture() {
     session_active_->store(false);
 
     // Update UI immediately from the GTK main loop (safe from any thread)
-    struct Ctx { Home* view; bool connected; };
-    auto* ctx = new Ctx{view_, device_connected_};
+    struct Ctx { Home* view; bool connected; ConnectionMode mode; };
+    auto* ctx = new Ctx{view_, device_connected_, connection_mode_};
     g_idle_add([](gpointer data) -> gboolean {
         auto* c = static_cast<Ctx*>(data);
         if (c->view) {
             c->view->setTransmitting(false);
-            c->view->setDeviceConnected(c->connected);
-            c->view->setTransmitButtonEnabled(c->connected);
+            c->view->setConnectionModeSelectorEnabled(true);
+            if (c->mode == ConnectionMode::Wifi) {
+                c->view->setWifiReady(true);
+                c->view->setTransmitButtonEnabled(true);
+            } else {
+                c->view->setDeviceConnected(c->connected);
+                c->view->setTransmitButtonEnabled(c->connected);
+            }
         }
         delete c;
         return G_SOURCE_REMOVE;
