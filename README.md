@@ -3,7 +3,7 @@ cmake -B build -S .
 cmake --build build
 
 
-# Requisitos
+# Requirements
 
 ```bash
 sudo dnf install -y \
@@ -20,9 +20,9 @@ sudo dnf install -y \
     libnice-gstreamer1
 ```
 
-# Ejecutar
+# Run
 
-**App desktop**
+**Desktop app**
 
 ```bash
 mkdir build && cd build
@@ -31,68 +31,68 @@ make
 ./skreen_desktop
 ```
 
-Para habilitar el switch de encendido/apagado del monitor (desactivado por defecto):
+To enable the monitor on/off switch (disabled by default):
 
 ```bash
 SKREEN_ACTIVE_MODULE_DRIVER=1 ./skreen_desktop
 ```
 
-# Empaquetar como RPM
+# Package as RPM
 
-Asegúrate de tener `rpmbuild` instalado:
+Make sure you have `rpmbuild` installed:
 
 ```bash
 sudo dnf install -y rpm-build rsync
 ```
 
-Luego ejecuta:
+Then run:
 
 ```bash
 ./packaging/build-rpm.sh
 ```
 
-El paquete `.rpm` quedará en `~/rpmbuild/RPMS/`. Para instalarlo:
+The `.rpm` package will be placed in `~/rpmbuild/RPMS/`. To install it:
 
 ```bash
 sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm
 ```
 
-Para desinstalarlo:
+To uninstall it:
 ```bash
 sudo dnf remove skreenapp
 ```
 
-# Empaquetar como DEB
+# Package as DEB
 
-Ejecuta:
+Run:
 
 ```bash
 ./packaging/build-deb.sh
 ```
 
-El paquete `.deb` quedará en `packaging/`. Para instalarlo:
+The `.deb` package will be placed in `packaging/`. To install it:
 
 ```bash
 sudo apt install ./packaging/skreenapp_0.1.0_amd64.deb
 ```
 
-Para desinstalarlo:
+To uninstall it:
 
 ```bash
 sudo apt remove skreenapp
 ```
 
-# Conexión USB
+# USB connection
 
-Conectar el celular por USB con USB debugging activado y ejecutar:
+Connect the phone via USB with USB debugging enabled and run:
 
 ```bash
 adb reverse tcp:9002 tcp:9002
 ```
 
-Luego abrir la app en el celular y pulsar **Conectar**.
+Then open the app on the phone and tap **Connect**.
 
-# para la eliminacion
+# Uninstalling
 
 rpm -qa | grep skreen
 
