@@ -76,7 +76,7 @@ void WebRtcSignaling::acceptLoop() {
         client_fd_ = cfd;
         if (on_client_connected_) on_client_connected_();
 
-        // Lee mensajes JSON delimitados por '\n' hasta que el cliente se desconecte
+        // Read newline-delimited JSON messages until the client disconnects
         std::string buffer;
         char chunk[4096];
         while (running_) {
@@ -96,8 +96,8 @@ void WebRtcSignaling::acceptLoop() {
         close(cfd);
         std::cout << "[WebRtcSignaling] Client disconnected\n";
 
-        // Si seguimos corriendo (no es un stop()), refrescar el pipeline para que
-        // la próxima conexión negocie WebRTC sobre un webrtcbin nuevo
+        // If we are still running (this is not a stop()), refresh the pipeline so
+        // the next connection negotiates WebRTC over a fresh webrtcbin
         if (running_ && on_client_disconnected_)
             on_client_disconnected_();
     }

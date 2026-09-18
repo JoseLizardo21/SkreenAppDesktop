@@ -121,8 +121,8 @@ private:
     void openPipeWireRemote();
     void closeSession();
 
-    // Llamada síncrona a OpenPipeWireRemote sobre la sesión activa; bloquea el
-    // hilo de DBus hasta obtener el fd (o -1 en error). No dispara portal_callback_.
+    // Synchronous OpenPipeWireRemote call on the active session; blocks the DBus
+    // thread until the fd arrives (or -1 on error). Does not fire portal_callback_.
     int requestPipeWireFdSync();
     void processFdRequests();
 
@@ -141,7 +141,7 @@ private:
     // Mutex for send operations
     std::mutex send_mutex_;
 
-    // Solicitudes pendientes de un fd de PipeWire nuevo (procesadas en worker_thread_)
+    // Pending requests for a new PipeWire fd (processed on worker_thread_)
     std::mutex fd_requests_mutex_;
     std::vector<FdCallback> fd_requests_;
 

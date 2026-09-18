@@ -1,18 +1,18 @@
-# CMakeLists.txt para el módulo Home
+# CMakeLists.txt for the Home module
 
-# Crear librería estática para Home
+# Create a static library for Home
 add_library(home_view STATIC
     Home.cpp
     Home.h
 )
 
-# Incluir directorios necesarios para esta librería
+# Include directories required by this library
 target_include_directories(home_view PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${GTK_INCLUDE_DIRS}
 )
 
-# Enlazar GTK con esta librería
+# Link GTK against this library
 target_link_libraries(home_view PUBLIC
     ${GTK_LIBRARIES}
 )

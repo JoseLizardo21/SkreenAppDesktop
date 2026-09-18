@@ -1,17 +1,17 @@
-# CMakeLists.txt para el directorio src
+# CMakeLists.txt for the src directory
 
 # Config
 add_subdirectory(config)
 
-# Añadir subdirectorios de controladores
+# Add controller subdirectories
 add_subdirectory(controller/Homecontroller)
 
-# Añadir subdirectorios de servicios
+# Add service subdirectories
 add_subdirectory(services/system/portalmanager)
 add_subdirectory(services/system/monitorcontrol)
 add_subdirectory(services/network)
 
-# Añadir subdirectorios de vistas
+# Add view subdirectories
 add_subdirectory(views/home)
 add_subdirectory(views/settings)
 add_subdirectory(services/media/gstreamermanager)

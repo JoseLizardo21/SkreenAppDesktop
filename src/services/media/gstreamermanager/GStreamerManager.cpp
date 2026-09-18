@@ -64,7 +64,7 @@ bool GStreamerManager::createElements()
     rtph264pay_ = gst_element_factory_make("rtph264pay", "pay");
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtcbin");
 
-    // Encoder: HW primero, SW fallback
+    // Encoder: hardware first, software fallback
     struct Candidate
     {
         const char *name;
@@ -109,11 +109,11 @@ bool GStreamerManager::createElements()
                          "keyframe-period", config_.keyframe_interval,
                          "quality-level", config_.encoder_speed,
                          "max-bframes", 0,
-                         "cpb-length", 125, // ms; equivalente al cpb-size de vah264enc (bitrate/8)
+                         "cpb-length", 125, // ms; equivalent to vah264enc's cpb-size (bitrate/8)
                          NULL);
 
-            // CBR vía nick de string: evita depender de valores numéricos del
-            // enum, que varían entre versiones del plugin gstreamer-vaapi.
+            // CBR via the string nick: avoids depending on the enum's numeric
+            // values, which change between gstreamer-vaapi plugin versions.
             gst_util_set_object_arg(G_OBJECT(encoder_), "rate-control", "cbr");
         }
         else if (name == "nvh264enc")
@@ -154,9 +154,9 @@ bool GStreamerManager::createElements()
         }
     }
 
-    // Conversión pre-encoder: con VAAPI/VA usa vapostproc/vaapipostproc (GPU), que
-    // pueden recibir memory:DMABuf de pipewiresrc y entregar la superficie ya en
-    // GPU al encoder. Con el resto, videoconvert (CPU) sobre memoria de sistema.
+    // Pre-encoder conversion: with VAAPI/VA use vapostproc/vaapipostproc (GPU),
+    // which can take memory:DMABuf from pipewiresrc and hand the surface to the
+    // encoder already on the GPU. Otherwise, videoconvert (CPU) over system memory.
     if (encoder_name_ == "vah264enc")
         convert_ = gst_element_factory_make("vapostproc", "convert");
     else if (encoder_name_ == "vaapih264enc")
@@ -175,25 +175,25 @@ bool GStreamerManager::createElements()
         return false;
     }
 
-    // Queue: leaky=2 (downstream) descarta frames viejos, mantiene el más reciente
+    // Queue: leaky=2 (downstream) drops old frames and keeps the most recent one
     g_object_set(G_OBJECT(queue_main_),
                  "max-size-buffers", 1, "max-size-bytes", 0,
                  "max-size-time", 0, "leaky", 2, NULL);
 
-    // h264parse: SPS/PPS antes de cada IDR
+    // h264parse: SPS/PPS before every IDR
     g_object_set(G_OBJECT(h264parse_),
                  "config-interval", -1,
                  "disable-passthrough", TRUE,
                  NULL);
 
-    // rtph264pay: repite SPS/PPS en cada IDR para que un cliente que se conecta
-    // a mitad de stream pueda decodificar desde el primer keyframe
+    // rtph264pay: repeat SPS/PPS on every IDR so a client joining mid-stream can
+    // decode from the first keyframe
     g_object_set(G_OBJECT(rtph264pay_),
                  "config-interval", -1,
                  "pt", 96,
                  NULL);
 
-    // webrtcbin: un solo m-line de video, sin STUN/TURN (LAN directa o loopback vía adb)
+    // webrtcbin: a single video m-line, no STUN/TURN (direct LAN or loopback over adb)
     g_object_set(G_OBJECT(webrtcbin_),
                  "bundle-policy", 3 /* GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE */,
                  NULL);
@@ -219,9 +219,9 @@ void GStreamerManager::configureIceForMode(GObject *ice_agent)
 {
     if (connection_mode_ == ConnectionMode::Cable)
     {
-        // Forzar ICE-TCP: adb reverse/forward solo tunelizan TCP, no UDP. Se desactiva
-        // la recolección de candidatos UDP y se fija el puerto TCP a kIceTcpPort para
-        // poder reenviarlo con un único "adb reverse tcp:9006 tcp:9006".
+        // Force ICE-TCP: adb reverse/forward only tunnel TCP, not UDP. UDP candidate
+        // gathering is disabled and the TCP port is pinned to kIceTcpPort so it can be
+        // forwarded with a single "adb reverse tcp:9006 tcp:9006".
         g_object_set(ice_agent,
                      "ice-udp", FALSE,
                      "ice-tcp", TRUE,
@@ -229,10 +229,10 @@ void GStreamerManager::configureIceForMode(GObject *ice_agent)
                      "max-rtp-port", kIceTcpPort,
                      NULL);
 
-        // Restringir la recolección de candidatos a loopback: sin esto, libnice
-        // detecta automáticamente todas las interfaces locales (p.ej. Wi-Fi) y
-        // ofrece candidatos TCP en esas IPs. Si el cliente las elige, la
-        // conexión queda atada a esa red en vez de al túnel adb (USB).
+        // Restrict candidate gathering to loopback: without this, libnice
+        // auto-detects every local interface (e.g. Wi-Fi) and offers TCP
+        // candidates on those IPs. If the client picks one, the connection ends
+        // up tied to that network instead of the adb (USB) tunnel.
         NiceAgent *nice_agent = nullptr;
         g_object_get(ice_agent, "agent", &nice_agent, NULL);
         if (nice_agent)
@@ -246,9 +246,9 @@ void GStreamerManager::configureIceForMode(GObject *ice_agent)
     }
     else // ConnectionMode::Wifi
     {
-        // UDP+TCP habilitados: candidatos host en todas las interfaces de red
-        // reales (sin restricción a loopback), priorizando UDP para mejor
-        // latencia. libnice enumera automáticamente las interfaces locales.
+        // UDP+TCP enabled: host candidates on every real network interface (no
+        // loopback restriction), preferring UDP for lower latency. libnice
+        // enumerates the local interfaces automatically.
         g_object_set(ice_agent,
                      "ice-udp", TRUE,
                      "ice-tcp", TRUE,
@@ -302,11 +302,11 @@ bool GStreamerManager::linkElements()
 
     pipeline_ = gst_pipeline_new("skreenapp-pipeline");
 
-    // Capsfilter post-pipewiresrc. Con vapostproc/vaapipostproc (GPU) se deja sin
-    // restricción: pueden negociar memory:DMABuf directo con pipewiresrc, evitando
-    // una copia CPU<->GPU por frame. Con videoconvert (CPU) hay que forzar memoria
-    // de sistema, ya que en máquinas con GPU el portal de screencast suele ofrecer
-    // memory:DMABuf, que videoconvert no puede negociar.
+    // Capsfilter after pipewiresrc. With vapostproc/vaapipostproc (GPU) it is left
+    // unconstrained: they can negotiate memory:DMABuf directly with pipewiresrc,
+    // avoiding a CPU<->GPU copy per frame. With videoconvert (CPU) system memory
+    // must be forced, since on GPU machines the screencast portal usually offers
+    // memory:DMABuf, which videoconvert cannot negotiate.
     GstElement *src_caps = gst_element_factory_make("capsfilter", "src_caps");
     if (!isVaapiEncoder())
     {
@@ -317,8 +317,8 @@ bool GStreamerManager::linkElements()
         gst_caps_unref(sys_mem_caps);
     }
 
-    // DIAGNÓSTICO TEMPORAL: videorate/rate_caps deshabilitado — parece estar
-    // bloqueando los buffers tras el primero.
+    // TEMPORARY DIAGNOSTIC: videorate/rate_caps disabled - it seems to be
+    // blocking the buffers after the first one.
     // GstElement *videorate = gst_element_factory_make("videorate", "rate");
     // g_object_set(G_OBJECT(videorate), "drop-only", FALSE, "skip-to-first", TRUE, NULL);
     //
@@ -329,7 +329,7 @@ bool GStreamerManager::linkElements()
     // g_object_set(G_OBJECT(rate_caps), "caps", rate_caps_val, NULL);
     // gst_caps_unref(rate_caps_val);
 
-    // Capsfilter pre-encoder: solo para x264enc, fuerza I420+sRGB para evitar tinte verde
+    // Pre-encoder capsfilter: x264enc only, forces I420+sRGB to avoid a green tint
     GstElement *enc_in = gst_element_factory_make("capsfilter", "enc_in");
     if (encoder_name_ == "x264enc")
     {
@@ -341,7 +341,7 @@ bool GStreamerManager::linkElements()
         gst_caps_unref(yuv_caps);
     }
 
-    // Capsfilter que fuerza byte-stream (Annex-B) en la salida del h264parse
+    // Capsfilter forcing byte-stream (Annex-B) on the h264parse output
     GstElement *h264out = gst_element_factory_make("capsfilter", "h264_out");
     GstCaps *sink_caps = gst_caps_new_simple("video/x-h264",
                                              "stream-format", G_TYPE_STRING, "byte-stream",
@@ -350,7 +350,7 @@ bool GStreamerManager::linkElements()
     g_object_set(G_OBJECT(h264out), "caps", sink_caps, NULL);
     gst_caps_unref(sink_caps);
 
-    // Capsfilter de salida del payloader: caps RTP explícitos para el sink_%u de webrtcbin
+    // Payloader output capsfilter: explicit RTP caps for webrtcbin's sink_%u
     GstElement *rtp_out = gst_element_factory_make("capsfilter", "rtp_out");
     GstCaps *rtp_caps = gst_caps_new_simple("application/x-rtp",
                                             "media", G_TYPE_STRING, "video",
@@ -376,7 +376,7 @@ bool GStreamerManager::linkElements()
         return false;
     }
 
-    // rtp_out -> webrtcbin (pad de petición: crea un transceiver de video sendonly)
+    // rtp_out -> webrtcbin (request pad: creates a sendonly video transceiver)
     GstPad *rtp_src = gst_element_get_static_pad(rtp_out, "src");
     GstPad *webrtc_sink = gst_element_request_pad_simple(webrtcbin_, "sink_%u");
     if (!rtp_src || !webrtc_sink || gst_pad_link(rtp_src, webrtc_sink) != GST_PAD_LINK_OK)
@@ -389,15 +389,15 @@ bool GStreamerManager::linkElements()
         return false;
     }
     gst_object_unref(rtp_src);
-    webrtc_sink_pad_ = webrtc_sink; // guardamos la ref para poder hacer swap dinámico
+    webrtc_sink_pad_ = webrtc_sink; // keep the ref so the bin can be swapped dynamically
 
-    // Lee width/height reales del stream codificado (para mapear coordenadas de touch)
+    // Read the real width/height of the encoded stream (to map touch coordinates)
     GstPad *parse_src = gst_element_get_static_pad(h264parse_, "src");
     gst_pad_add_probe(parse_src, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM,
                       onCapsProbe, this, NULL);
     gst_object_unref(parse_src);
 
-    // Marca de actividad para el watchdog de stall (forceKeyframe tras reanudar)
+    // Activity marker for the stall watchdog (forceKeyframe after resuming)
     GstPad *pay_sink = gst_element_get_static_pad(rtph264pay_, "sink");
     gst_pad_add_probe(pay_sink, GST_PAD_PROBE_TYPE_BUFFER,
                       onPayloaderBuffer, this, NULL);
@@ -456,8 +456,8 @@ GstPadProbeReturn GStreamerManager::onPayloaderBuffer(GstPad *pad, GstPadProbeIn
     bool was_stalled = (now - self->last_frame_time_) >= kStallThreshold;
     self->last_frame_time_ = now;
 
-    // Si el pipeline estuvo parado (PipeWire inactivo), forzar IDR inmediato
-    // para que el cliente reciba un frame limpio sin artefactos de referencia
+    // If the pipeline was stalled (PipeWire idle), force an immediate IDR so the
+    // client gets a clean frame with no reference artifacts
     if (was_stalled)
         self->forceKeyframe();
 
@@ -465,7 +465,7 @@ GstPadProbeReturn GStreamerManager::onPayloaderBuffer(GstPad *pad, GstPadProbeIn
 }
 
 // ============================================================
-// Señalización WebRTC
+// WebRTC signaling
 // ============================================================
 
 void GStreamerManager::createOffer()
@@ -532,8 +532,8 @@ void GStreamerManager::onIceConnectionStateCb(GstElement *webrtcbin, GParamSpec 
 {
     GstWebRTCICEConnectionState state;
     g_object_get(webrtcbin, "ice-connection-state", &state, NULL);
-    // Forzar IDR cuando ICE está listo para transmitir: garantiza que el primer
-    // frame que recibe el cliente sea un keyframe decodable (sin referencia previa).
+    // Force an IDR once ICE is ready to transmit: guarantees the first frame the
+    // client receives is a decodable keyframe (with no prior reference).
     if (state == GST_WEBRTC_ICE_CONNECTION_STATE_CONNECTED ||
         state == GST_WEBRTC_ICE_CONNECTION_STATE_COMPLETED)
     {
@@ -594,10 +594,10 @@ bool GStreamerManager::restartWebRtcBin()
     gst_object_unref(rtp_out);
     if (!rtp_src) return false;
 
-    // Bloquear el streaming thread en rtp_out src para que el encoder no
-    // intente hacer push durante el gap en que rtp_out no tiene sink aguas abajo.
-    // Esto evita el "Failed to push one frame" sin pausar el pipeline completo
-    // (pausar el pipeline rompía la negociación de caps DMABuf de pipewiresrc).
+    // Block the streaming thread on rtp_out's src pad so the encoder does not try
+    // to push during the gap where rtp_out has no downstream sink. This avoids the
+    // "Failed to push one frame" without pausing the whole pipeline (pausing it
+    // broke pipewiresrc's DMABuf caps negotiation).
     struct PadBlock {
         std::mutex mtx;
         std::condition_variable cv;
@@ -614,33 +614,33 @@ bool GStreamerManager::restartWebRtcBin()
                 b->fired = true;
             }
             b->cv.notify_one();
-            return GST_PAD_PROBE_OK; // mantiene el bloqueo hasta que removamos el probe
+            return GST_PAD_PROBE_OK; // holds the block until we remove the probe
         },
         &block, nullptr);
 
-    // Esperar máx 100 ms a que el probe dispare. Si la pantalla está estática,
-    // pipewiresrc no empuja frames y el probe nunca dispara; en ese caso el
-    // swap igualmente es seguro porque el encoder tampoco está intentando push.
+    // Wait at most 100 ms for the probe to fire. If the screen is static,
+    // pipewiresrc pushes no frames and the probe never fires; the swap is still
+    // safe in that case because the encoder is not trying to push either.
     {
         std::unique_lock<std::mutex> lock(block.mtx);
         block.cv.wait_for(lock, std::chrono::milliseconds(100),
                           [&block] { return block.fired; });
     }
 
-    // CRÍTICO: deslinkar rtp_src ANTES de gst_element_set_state(NULL).
-    // Si aún estuviera enlazado, la transición NULL dispararía eventos FLUSH
-    // que viajan upstream por rtp_src — el cual está bloqueado con el probe —
-    // produciendo deadlock (el FLUSH necesita el STREAM_LOCK que el probe sostiene).
+    // CRITICAL: unlink rtp_src BEFORE gst_element_set_state(NULL).
+    // If it were still linked, the NULL transition would fire FLUSH events that
+    // travel upstream through rtp_src - which the probe is blocking - causing a
+    // deadlock (the FLUSH needs the STREAM_LOCK the probe holds).
     gst_pad_unlink(rtp_src, webrtc_sink_pad_);
     gst_element_release_request_pad(webrtcbin_, webrtc_sink_pad_);
     gst_object_unref(webrtc_sink_pad_);
     webrtc_sink_pad_ = nullptr;
 
-    gst_element_set_state(webrtcbin_, GST_STATE_NULL); // seguro: pad ya desenlazado
+    gst_element_set_state(webrtcbin_, GST_STATE_NULL); // safe: pad already unlinked
     gst_bin_remove(GST_BIN(pipeline_), webrtcbin_);
     webrtcbin_ = nullptr;
 
-    // Crear y configurar el nuevo webrtcbin
+    // Create and configure the new webrtcbin
     webrtcbin_ = gst_element_factory_make("webrtcbin", "webrtcbin");
     if (!webrtcbin_)
     {
@@ -683,14 +683,14 @@ bool GStreamerManager::restartWebRtcBin()
 
     gst_element_sync_state_with_parent(webrtcbin_);
 
-    // Desbloquear el streaming thread: el frame retenido por el probe se empujará
-    // ahora hacia el nuevo webrtcbin. GStreamer enviará el evento CAPS antes del
-    // primer buffer, por lo que la negociación es transparente.
+    // Unblock the streaming thread: the frame held by the probe is now pushed to
+    // the new webrtcbin. GStreamer sends the CAPS event before the first buffer,
+    // so the negotiation is transparent.
     gst_pad_remove_probe(rtp_src, probe_id);
     gst_object_unref(rtp_src);
 
-    // IDR adicional para asegurar que el cliente reciba un keyframe decodable.
-    // onIceConnectionStateCb también forzará otro IDR cuando ICE esté conectado.
+    // Extra IDR to make sure the client receives a decodable keyframe.
+    // onIceConnectionStateCb will also force another IDR once ICE is connected.
     forceKeyframe();
 
     std::cout << "🔄 WebRTC bin reemplazado (pipewiresrc sigue corriendo)\n";
@@ -765,7 +765,7 @@ void GStreamerManager::watchdogLoop()
 
     while (watchdog_running_)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~1 frame a 60fps
+        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~1 frame at 60fps
         if (!is_capturing_)
             continue;
 
@@ -774,10 +774,10 @@ void GStreamerManager::watchdogLoop()
         if ((now - last_frame_time_) < kStallThreshold)
             continue;
 
-        // Pantalla estática: pipewiresrc no entrega frames nuevos. No es un error
-        // (WebRTC simplemente no envía nada hasta que cambie la imagen); solo lo
-        // registramos, sin tocar el estado de pipewiresrc (eso rompía la
-        // renegociación de caps con el nuevo tail rtph264pay/webrtcbin).
+        // Static screen: pipewiresrc delivers no new frames. This is not an error
+        // (WebRTC simply sends nothing until the image changes); we just log it,
+        // without touching pipewiresrc's state (that broke caps renegotiation with
+        // the new rtph264pay/webrtcbin tail).
         if ((now - last_log) >= std::chrono::milliseconds(1000))
         {
             last_log = now;
@@ -790,7 +790,7 @@ void GStreamerManager::forceKeyframe()
 {
     if (!encoder_)
         return;
-    // Envía evento upstream al encoder para generar un IDR en el próximo frame
+    // Send an upstream event to the encoder to generate an IDR on the next frame
     GstPad *sink_pad = gst_element_get_static_pad(encoder_, "sink");
     if (sink_pad)
     {

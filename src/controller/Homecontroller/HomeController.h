@@ -35,17 +35,17 @@ private:
     StreamConfig config_;
     ConfigManager config_manager_;
     std::unique_ptr<MonitorControl> monitor_control_;
-    // Destrucción en orden inverso: gstreamer_manager_ debe sobrevivir a
-    // portal_manager_ porque el worker thread del portal puede llamar a
-    // gm->restartPipeline() hasta que su join() retorne en ~PortalManager().
+    // Destroyed in reverse order: gstreamer_manager_ must outlive
+    // portal_manager_ because the portal worker thread may call
+    // gm->restartPipeline() until its join() returns in ~PortalManager().
     std::unique_ptr<GStreamerManager> gstreamer_manager_;
     std::unique_ptr<PortalManager> portal_manager_;
     std::unique_ptr<InputServer> input_server_;
     std::unique_ptr<AdbMonitor> adb_monitor_;
     std::unique_ptr<NotifyServer> notify_server_;
     std::unique_ptr<WebRtcSignaling> webrtc_signaling_;
-    // Flag compartido con los lambdas de reconexión para abortar restartPipeline
-    // si el usuario paró la sesión antes de que el fd request completara.
+    // Flag shared with the reconnection lambdas to abort restartPipeline if the
+    // user stopped the session before the fd request completed.
     std::shared_ptr<std::atomic<bool>> session_active_{std::make_shared<std::atomic<bool>>(false)};
     std::thread stop_thread_;
 };

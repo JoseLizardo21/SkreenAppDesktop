@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(SkreenDesktop VERSION 0.1.0)
 
-# Versión con git hash para builds de desarrollo (ej: v0.1.0-3-gabcd123)
+# Version with git hash for development builds (e.g. v0.1.0-3-gabcd123)
 execute_process(
   COMMAND git describe --tags --always --dirty
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -21,11 +21,11 @@ configure_file(
   ${CMAKE_BINARY_DIR}/version.h
 )
 
-# Configurar estándar C++
+# Configure the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ========== Buscar paquetes ==========
+# ========== Find packages ==========
 find_package(PkgConfig REQUIRED)
 
 # GTK, GStreamer, DBus
@@ -43,7 +43,7 @@ pkg_check_modules(DBUS REQUIRED dbus-1)
 # ========== Threads ==========
 find_package(Threads REQUIRED)
 
-# ========== Incluir directorios de headers ==========
+# ========== Header include directories ==========
 include_directories(
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/include
@@ -54,27 +54,27 @@ include_directories(
     ${DBUS_INCLUDE_DIRS}
 )
 
-# ========== Añadir directorios de librerías ==========
+# ========== Library directories ==========
 link_directories(
     ${GTK_LIBRARY_DIRS}
     ${GSTREAMER_LIBRARY_DIRS}
     ${NICE_LIBRARY_DIRS}
 )
 
-# ========== Definiciones adicionales ==========
+# ========== Extra definitions ==========
 add_definitions(
     ${GTK_CFLAGS_OTHER}
     ${GSTREAMER_CFLAGS_OTHER}
     ${NICE_CFLAGS_OTHER}
 )
 
-# ========== Añadir subdirectorios ==========
+# ========== Add subdirectories ==========
 add_subdirectory(src)
 
-# ========== Crear ejecutable principal ==========
+# ========== Main executable ==========
 add_executable(skreen_desktop main.cpp)
 
-# ========== Enlazar con las librerías ==========
+# ========== Link against the libraries ==========
 target_link_libraries(skreen_desktop
     home_view
     settings_view

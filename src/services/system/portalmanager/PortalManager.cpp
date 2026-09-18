@@ -44,13 +44,13 @@ void PortalManager::startAsync() {
         DBusError err;
         dbus_error_init(&err);
 
-        // Conexión privada (no compartida con el resto del proceso): al
-        // cerrarla en stop() el bus notifica la desconexión y Mutter limpia
-        // por completo la sesión de ScreenCast/RemoteDesktop asociada (mismo
-        // mecanismo de "cliente desaparecido" que libera el stream de
-        // PipeWire). Con la conexión compartida de dbus_bus_get(), el
-        // proceso nunca "desaparece" entre sesiones y el node_id reciclado
-        // de la siguiente captura se queda sin frames.
+        // Private connection (not shared with the rest of the process): closing
+        // it in stop() makes the bus report the disconnection and Mutter fully
+        // tears down the associated ScreenCast/RemoteDesktop session (the same
+        // "client went away" mechanism that releases the PipeWire stream). With
+        // the shared connection from dbus_bus_get(), the process never "goes
+        // away" between sessions and the recycled node_id of the next capture
+        // ends up with no frames.
         connection_ = dbus_bus_get_private(DBUS_BUS_SESSION, &err);
         if (dbus_error_is_set(&err)) {
             std::cerr << "⚠️  DBus connection failed: " << err.message << "\n";
@@ -95,8 +95,8 @@ void PortalManager::startAsync() {
             processFdRequests();
         }
 
-        // dbus_connection_close() es lo que hace que el bus notifique
-        // nuestra desconexión a Mutter (ver comentario más arriba)
+        // dbus_connection_close() is what makes the bus report our
+        // disconnection to Mutter (see the comment above)
         dbus_connection_close(connection_);
         dbus_connection_unref(connection_);
         connection_ = nullptr;
@@ -104,12 +104,11 @@ void PortalManager::startAsync() {
 }
 
 void PortalManager::stop() {
-    // El bus session de DBus es compartido por todo el proceso (dbus_bus_get
-    // devuelve la misma conexión en cada startAsync()), así que la sesión del
-    // portal de la captura anterior nunca se cierra sola al "desconectar". Si
-    // no se cierra explícitamente, xdg-desktop-portal/el compositor la dejan
-    // activa indefinidamente y la siguiente sesión (nuevo node_id) puede no
-    // recibir frames de PipeWire.
+    // The DBus session bus is shared by the whole process (dbus_bus_get returns
+    // the same connection on every startAsync()), so the portal session of the
+    // previous capture never closes by itself on "disconnect". If it is not closed
+    // explicitly, xdg-desktop-portal/the compositor keep it active indefinitely and
+    // the next session (with a new node_id) may receive no PipeWire frames.
     closeSession();
     is_running_ = false;
 }
@@ -437,7 +436,7 @@ int PortalManager::requestPipeWireFdSync() {
     if (!pending)
         return -1;
 
-    // Block until reply (corre en worker_thread_, no comparte connection_ con otro hilo)
+    // Block until reply (runs on worker_thread_, connection_ is not shared with another thread)
     dbus_pending_call_block(pending);
     DBusMessage* reply = dbus_pending_call_steal_reply(pending);
     dbus_pending_call_unref(pending);

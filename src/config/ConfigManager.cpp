@@ -43,7 +43,7 @@ StreamConfig ConfigManager::load() {
 }
 
 void ConfigManager::save(const StreamConfig& cfg) {
-    // Lee el JSON existente primero para no pisar otras claves (ej. "connection").
+    // Read the existing JSON first so other keys (e.g. "connection") are not clobbered.
     json j = readExistingJson(config_path_);
     j["stream"]["bitrate"]           = cfg.bitrate;
     j["stream"]["keyframe_interval"] = cfg.keyframe_interval;
@@ -59,7 +59,7 @@ ConnectionMode ConfigManager::loadConnectionMode() {
 }
 
 void ConfigManager::saveConnectionMode(ConnectionMode mode) {
-    // Lee el JSON existente primero para no pisar otras claves (ej. "stream").
+    // Read the existing JSON first so other keys (e.g. "stream") are not clobbered.
     json j = readExistingJson(config_path_);
     j["connection"]["mode"] = connectionModeToString(mode);
     writeJson(config_path_, j);

@@ -11,8 +11,8 @@
 #include "config/StreamConfig.h"
 #include "config/ConnectionMode.h"
 
-// Forward declaration en vez de incluir <gst/webrtc/webrtc.h> (requiere
-// GST_USE_UNSTABLE_API) solo para el tipo de un parámetro de callback.
+// Forward declaration instead of including <gst/webrtc/webrtc.h> (which requires
+// GST_USE_UNSTABLE_API) just for the type of a callback parameter.
 typedef struct _GstWebRTCDTLSTransport GstWebRTCDTLSTransport;
 
 class GStreamerManager {
@@ -37,15 +37,15 @@ public:
 
     bool restartPipeline(int fd);
 
-    // Reemplaza solo el webrtcbin (para nueva negociación WebRTC tras
-    // desconexión del cliente) manteniendo pipewiresrc y el encoder corriendo,
-    // evitando así el reconecte a PipeWire que causaba pantalla negra.
+    // Replaces only the webrtcbin (for a fresh WebRTC negotiation after the
+    // client disconnects) while keeping pipewiresrc and the encoder running,
+    // avoiding the PipeWire reconnect that caused a black screen.
     bool restartWebRtcBin();
 
     int getStreamWidth() const { return stream_w_; }
     int getStreamHeight() const { return stream_h_; }
 
-    // WebRTC signaling: usado por WebRtcSignaling para negociar SDP/ICE con el cliente
+    // WebRTC signaling: used by WebRtcSignaling to negotiate SDP/ICE with the client
     void setOnLocalDescription(LocalDescriptionCallback callback) { on_local_description_ = callback; }
     void setOnIceCandidate(IceCandidateCallback callback) { on_ice_candidate_ = callback; }
     void createOffer();
@@ -53,12 +53,12 @@ public:
     void addIceCandidate(guint mlineindex, const std::string& candidate);
 
 private:
-    // Puerto fijo de ICE-TCP para el medio WebRTC (adb reverse tcp:9006 tcp:9006)
+    // Fixed ICE-TCP port for the WebRTC media (adb reverse tcp:9006 tcp:9006)
     static constexpr guint kIceTcpPort = 9006;
-    // Rango de puertos UDP para ICE en modo WiFi (ver nota de firewall en el plan)
+    // UDP port range for ICE in WiFi mode (see the firewall note in the plan)
     static constexpr guint kIceWifiUdpPortMin = 40000;
     static constexpr guint kIceWifiUdpPortMax = 40020;
-    // PT de retransmisión RFC4588 para el H.264 (PT 96, ver rtp_out caps en linkElements)
+    // RFC4588 retransmission PT for H.264 (PT 96, see the rtp_out caps in linkElements)
     static constexpr guint kRtxPayloadType = 97;
 
     ConnectionMode connection_mode_{ConnectionMode::Cable};
@@ -72,7 +72,7 @@ private:
     GstElement* h264parse_{nullptr};
     GstElement* rtph264pay_{nullptr};
     GstElement* webrtcbin_{nullptr};
-    GstPad*     webrtc_sink_pad_{nullptr}; // request pad de webrtcbin (sink_%u)
+    GstPad*     webrtc_sink_pad_{nullptr}; // webrtcbin request pad (sink_%u)
 
     std::string encoder_name_;
     StreamConfig config_;
@@ -89,14 +89,14 @@ private:
     LocalDescriptionCallback on_local_description_;
     IceCandidateCallback on_ice_candidate_;
 
-    // Force-IDR al reanudar: detecta gaps en el stream y fuerza un keyframe limpio
+    // Force-IDR on resume: detects gaps in the stream and forces a clean keyframe
     std::chrono::steady_clock::time_point last_frame_time_;
-    static constexpr auto kStallThreshold = std::chrono::milliseconds(2000); // stall real, no gaps normales por pantalla estática
+    static constexpr auto kStallThreshold = std::chrono::milliseconds(2000); // a real stall, not the normal gaps of a static screen
 
     void forceKeyframe();
 
-    // Watchdog: cuando Wayland no envía frames (ventana idle), fuerza un RECONFIGURE
-    // en pipewiresrc para que el compositor entregue el estado actual de pantalla
+    // Watchdog: when Wayland sends no frames (idle window), forces a RECONFIGURE on
+    // pipewiresrc so the compositor delivers the current screen state
     std::thread watchdog_thread_;
     std::atomic<bool> watchdog_running_{false};
     void watchdogLoop();
@@ -107,8 +107,8 @@ private:
     bool setupBusHandler();
     void configureIceForMode(GObject* ice_agent);
 
-    // vah264enc/vaapih264enc admiten memory:DMABuf y conversión por GPU
-    // (vapostproc/vaapipostproc), evitando el round-trip CPU<->GPU de videoconvert
+    // vah264enc/vaapih264enc support memory:DMABuf and GPU conversion
+    // (vapostproc/vaapipostproc), avoiding videoconvert's CPU<->GPU round-trip
     bool isVaapiEncoder() const
     {
         return encoder_name_ == "vah264enc" || encoder_name_ == "vaapih264enc";
@@ -120,10 +120,10 @@ private:
     static void onOfferCreated(GstPromise* promise, gpointer user_data);
     static void onIceCandidateCb(GstElement* webrtcbin, guint mlineindex, gchar* candidate, gpointer user_data);
     static void onIceConnectionStateCb(GstElement* webrtcbin, GParamSpec* pspec, gpointer user_data);
-    // NACK/RTX (RFC4588): en WiFi, a diferencia de cable (ICE-TCP, retransmite a
-    // nivel de transporte), los paquetes UDP perdidos se pierden para siempre a
-    // menos que el emisor los retransmita a pedido. Este handler crea el bin
-    // rtprtxsend que webrtcbin inserta en la cadena de envío cuando lo pide.
+    // NACK/RTX (RFC4588): over WiFi, unlike cable (ICE-TCP, which retransmits at
+    // the transport level), lost UDP packets are gone for good unless the sender
+    // retransmits them on request. This handler creates the rtprtxsend bin that
+    // webrtcbin inserts into the send chain when it asks for one.
     static GstElement* onRequestAuxSender(GstElement* webrtcbin, GstWebRTCDTLSTransport* transport, gpointer user_data);
 
     void cleanup();

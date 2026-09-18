@@ -1,6 +1,6 @@
-# CMakeLists.txt para el módulo PortalManager
+# CMakeLists.txt for the PortalManager module
 
-# Crear librería estática para PortalManager
+# Create a static library for PortalManager
 add_library(portal_manager STATIC
     PortalManager.cpp
     PortalManager.h
@@ -11,7 +11,7 @@ target_include_directories(portal_manager PUBLIC
     ${GTK_INCLUDE_DIRS}
 )
 
-# Enlazar GTK con esta librería
+# Link GTK against this library
 target_link_libraries(portal_manager PUBLIC
     ${GTK_LIBRARIES}
 )

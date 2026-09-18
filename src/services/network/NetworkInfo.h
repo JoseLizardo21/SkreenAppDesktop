@@ -6,7 +6,7 @@
 
 class NetworkInfo {
 public:
-    // IPv4 de todas las interfaces activas y no-loopback (ej. wlan0, eth0).
+    // IPv4 addresses of every active, non-loopback interface (e.g. wlan0, eth0).
     static std::vector<std::string> localIpv4Addresses();
 };
 

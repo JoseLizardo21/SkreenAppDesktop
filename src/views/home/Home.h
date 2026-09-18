@@ -34,7 +34,7 @@ class Home {
         void cancelTransmission();
         void openSettings();
         bool monitorToggled(bool enabled);
-        // Invocado por el handler GTK del radio de WiFi cuando el usuario cambia el modo.
+        // Invoked by the WiFi radio's GTK handler when the user changes the mode.
         void connectionModeToggled(bool wifi_selected);
         // Shows the confirmation dialog for turning off the monitor. Returns
         // true if the user confirmed.
@@ -49,14 +49,14 @@ class Home {
         void setTransmitButtonEnabled(bool enabled);
         void setTransmitting(bool transmitting);
         void setDeviceConnected(bool connected);
-        // Estado del status_row en modo WiFi (no depende de detección adb).
+        // status_row state in WiFi mode (does not depend on adb detection).
         void setWifiReady(bool ready);
-        // Refleja el modo guardado en la UI sin disparar setOnConnectionModeChangedCallback
-        // (mismo patrón que setMonitorSwitchState).
+        // Reflects the saved mode in the UI without triggering
+        // setOnConnectionModeChangedCallback (same pattern as setMonitorSwitchState).
         void setConnectionMode(ConnectionMode mode);
-        // Label con la(s) IP(s) local(es); pasar vector vacío la oculta (modo Cable).
+        // Label with the local IP(s); passing an empty vector hides it (Cable mode).
         void setLocalIpAddresses(const std::vector<std::string>& ips);
-        // Deshabilita el selector Cable/WiFi mientras hay una sesión de streaming activa.
+        // Disables the Cable/WiFi selector while a streaming session is active.
         void setConnectionModeSelectorEnabled(bool enabled);
         GtkWindow* getGtkWindow() { return GTK_WINDOW(window); }
     private:

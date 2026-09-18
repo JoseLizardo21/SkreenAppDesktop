@@ -1,4 +1,4 @@
-# CMakeLists.txt para el módulo MonitorControl
+# CMakeLists.txt for the MonitorControl module
 
 add_library(monitor_control STATIC
     MonitorControl.cpp

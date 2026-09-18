@@ -21,9 +21,9 @@ static void on_settings_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->openSettings();
 }
 
-// Conectado solo al radio de WiFi: GTK emite "toggled" en ambos radios del grupo
-// cuando cambia la selección, así que basta un único handler mirando su propio
-// estado (true = WiFi quedó seleccionado, false = Cable quedó seleccionado).
+// Connected to the WiFi radio only: GTK emits "toggled" on both radios of the
+// group when the selection changes, so a single handler looking at its own state
+// is enough (true = WiFi got selected, false = Cable got selected).
 static void on_wifi_radio_toggled(GtkWidget* radio, gpointer data) {
     auto* home = static_cast<Home*>(data);
     bool wifi_active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(radio));
@@ -265,8 +265,8 @@ Home::Home() {
     gtk_widget_set_halign(icon, GTK_ALIGN_CENTER);
     gtk_box_pack_start(GTK_BOX(center), icon, FALSE, FALSE, 0);
 
-    // Selector de modo de conexión: siempre visible (a diferencia del switch de
-    // monitor, que está detrás de SKREEN_ACTIVE_MODULE_DRIVER).
+    // Connection mode selector: always visible (unlike the monitor switch, which
+    // sits behind SKREEN_ACTIVE_MODULE_DRIVER).
     GtkWidget* mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     gtk_widget_set_halign(mode_row, GTK_ALIGN_CENTER);
 
@@ -286,7 +286,7 @@ Home::Home() {
     gtk_label_set_selectable(GTK_LABEL(local_ip_label_), TRUE);
     gtk_style_context_add_class(gtk_widget_get_style_context(local_ip_label_), "status-idle");
     gtk_widget_set_halign(local_ip_label_, GTK_ALIGN_CENTER);
-    gtk_widget_set_no_show_all(local_ip_label_, TRUE); // oculto hasta setLocalIpAddresses()
+    gtk_widget_set_no_show_all(local_ip_label_, TRUE); // hidden until setLocalIpAddresses()
     gtk_box_pack_start(GTK_BOX(center), local_ip_label_, FALSE, FALSE, 0);
 
     GtkWidget* status_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);

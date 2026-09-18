@@ -15,15 +15,15 @@ public:
     void start();
     void stop();
 
-    // message debe incluir el '\n' final (delimitador de mensaje)
+    // message must include the trailing '\n' (message delimiter)
     void send(const std::string& message);
 
-    // Se invoca por cada línea JSON recibida del cliente (offer/answer/ice)
+    // Invoked for every JSON line received from the client (offer/answer/ice)
     void setOnMessage(MessageCallback callback) { on_message_ = callback; }
-    // Se invoca cuando el cliente conecta, para disparar la oferta WebRTC
+    // Invoked when the client connects, to trigger the WebRTC offer
     void setOnClientConnected(ConnectedCallback callback) { on_client_connected_ = callback; }
-    // Se invoca cuando el cliente se desconecta (mientras el servidor sigue corriendo),
-    // para refrescar el pipeline antes de aceptar la próxima conexión
+    // Invoked when the client disconnects (while the server keeps running), to
+    // refresh the pipeline before accepting the next connection
     void setOnClientDisconnected(ConnectedCallback callback) { on_client_disconnected_ = callback; }
 
 private:

@@ -1,12 +1,12 @@
-# CMakeLists.txt para el módulo gstreamermanager
+# CMakeLists.txt for the gstreamermanager module
 
-# Crear librería estática para gstreamermanager
+# Create a static library for gstreamermanager
 add_library(gstreamer_manager STATIC
     GStreamerManager.cpp
     GStreamerManager.h
 )
 
-# Incluir directorios necesarios para esta librería
+# Include directories required by this library
 target_include_directories(gstreamer_manager PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${GTK_INCLUDE_DIRS}
@@ -14,7 +14,7 @@ target_include_directories(gstreamer_manager PUBLIC
     ${NICE_INCLUDE_DIRS}
 )
 
-# Enlazar GTK, GStreamer y libnice con esta librería
+# Link GTK, GStreamer and libnice against this library
 target_link_libraries(gstreamer_manager PUBLIC
     ${GTK_LIBRARIES}
     ${GSTREAMER_LIBRARIES}

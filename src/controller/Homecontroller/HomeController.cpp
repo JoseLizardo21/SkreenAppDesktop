@@ -32,7 +32,7 @@ HomeController::HomeController(Home* home)
     if (monitor_control_->isEnabled(monitor_enabled))
         view_->setMonitorSwitchState(monitor_enabled);
 
-    // Refleja el modo persistido sin disparar handleConnectionModeChanged.
+    // Reflect the persisted mode without triggering handleConnectionModeChanged.
     view_->setConnectionMode(connection_mode_);
     if (connection_mode_ == ConnectionMode::Wifi) {
         view_->setLocalIpAddresses(NetworkInfo::localIpv4Addresses());
@@ -136,9 +136,9 @@ void HomeController::onPortalComplete(const std::string& session_handle,
     webrtc_signaling_->setOnClientDisconnected([this, active]() {
         if (!active->load())
             return;
-        // Parar captura desde el thread de GTK: no se puede llamar a
-        // handleStopCapture() directamente desde el acceptLoop de WebRtcSignaling
-        // porque eso destruiría el thread mientras sigue ejecutándose.
+        // Stop the capture from the GTK thread: handleStopCapture() cannot be
+        // called directly from WebRtcSignaling's acceptLoop because that would
+        // destroy the thread while it is still running.
         g_idle_add([](gpointer data) -> gboolean {
             static_cast<HomeController *>(data)->handleStopCapture();
             return G_SOURCE_REMOVE;
@@ -258,9 +258,9 @@ void HomeController::handleOpenSettings() {
 }
 
 void HomeController::handleStopCapture() {
-    // Cancela cualquier reconexión pendiente antes de detener los servicios,
-    // evitando que el worker de PortalManager llame a restartPipeline() sobre
-    // un GStreamerManager ya destruido.
+    // Cancel any pending reconnection before stopping the services, so the
+    // PortalManager worker cannot call restartPipeline() on an already
+    // destroyed GStreamerManager.
     session_active_->store(false);
 
     // Update UI immediately from the GTK main loop (safe from any thread)
