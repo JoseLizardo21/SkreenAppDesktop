@@ -11,10 +11,6 @@
 #include "config/StreamConfig.h"
 #include "config/ConnectionMode.h"
 
-// Forward declaration instead of including <gst/webrtc/webrtc.h> (which requires
-// GST_USE_UNSTABLE_API) just for the type of a callback parameter.
-typedef struct _GstWebRTCDTLSTransport GstWebRTCDTLSTransport;
-
 class GStreamerManager {
 public:
     using ErrorCallback = std::function<void(const std::string&)>;
@@ -58,8 +54,6 @@ private:
     // UDP port range for ICE in WiFi mode (see the firewall note in the plan)
     static constexpr guint kIceWifiUdpPortMin = 40000;
     static constexpr guint kIceWifiUdpPortMax = 40020;
-    // RFC4588 retransmission PT for H.264 (PT 96, see the rtp_out caps in linkElements)
-    static constexpr guint kRtxPayloadType = 97;
 
     ConnectionMode connection_mode_{ConnectionMode::Cable};
 
@@ -120,11 +114,6 @@ private:
     static void onOfferCreated(GstPromise* promise, gpointer user_data);
     static void onIceCandidateCb(GstElement* webrtcbin, guint mlineindex, gchar* candidate, gpointer user_data);
     static void onIceConnectionStateCb(GstElement* webrtcbin, GParamSpec* pspec, gpointer user_data);
-    // NACK/RTX (RFC4588): over WiFi, unlike cable (ICE-TCP, which retransmits at
-    // the transport level), lost UDP packets are gone for good unless the sender
-    // retransmits them on request. This handler creates the rtprtxsend bin that
-    // webrtcbin inserts into the send chain when it asks for one.
-    static GstElement* onRequestAuxSender(GstElement* webrtcbin, GstWebRTCDTLSTransport* transport, gpointer user_data);
 
     void cleanup();
     void error(const std::string& message);
