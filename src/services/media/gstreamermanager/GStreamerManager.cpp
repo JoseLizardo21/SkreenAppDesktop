@@ -208,9 +208,39 @@ bool GStreamerManager::createElements()
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
     g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
+    if (connection_mode_ == ConnectionMode::Wifi)
+        g_signal_connect(webrtcbin_, "request-aux-sender", G_CALLBACK(onRequestAuxSender), this);
 
     std::cout << "  ✓ All elements created\n";
     return true;
+}
+
+GstElement *GStreamerManager::onRequestAuxSender(GstElement *webrtcbin, GstWebRTCDTLSTransport *transport, gpointer user_data)
+{
+    (void)webrtcbin;
+    (void)transport;
+    (void)user_data;
+
+    GstElement *rtx = gst_element_factory_make("rtprtxsend", NULL);
+    GstStructure *pt_map = gst_structure_new(
+        "application/x-rtp-pt-map",
+        "96", G_TYPE_UINT, kRtxPayloadType,
+        NULL);
+    g_object_set(rtx, "payload-type-map", pt_map, NULL);
+    gst_structure_free(pt_map);
+
+    GstElement *bin = gst_bin_new(NULL);
+    gst_bin_add(GST_BIN(bin), rtx);
+
+    GstPad *src_pad = gst_element_get_static_pad(rtx, "src");
+    gst_element_add_pad(bin, gst_ghost_pad_new("src", src_pad));
+    gst_object_unref(src_pad);
+
+    GstPad *sink_pad = gst_element_get_static_pad(rtx, "sink");
+    gst_element_add_pad(bin, gst_ghost_pad_new("sink", sink_pad));
+    gst_object_unref(sink_pad);
+
+    return bin;
 }
 
 void GStreamerManager::configureIceForMode(GObject *ice_agent)
@@ -328,6 +358,18 @@ bool GStreamerManager::linkElements()
                                             "payload", G_TYPE_INT, 96,
                                             "clock-rate", G_TYPE_INT, 90000,
                                             NULL);
+    if (connection_mode_ == ConnectionMode::Wifi)
+    {
+        // Advertise NACK support in the SDP offer (a=rtcp-fb:96 nack / nack pli).
+        // Without this, webrtcbin never offers it, the phone (answerer) never
+        // knows it's allowed to request retransmits, and "request-aux-sender"
+        // (see onRequestAuxSender) never fires - connecting that signal alone
+        // is not enough, it only builds the RTX sender once NACK is negotiated.
+        gst_caps_set_simple(rtp_caps,
+                            "rtcp-fb-nack", G_TYPE_BOOLEAN, TRUE,
+                            "rtcp-fb-nack-pli", G_TYPE_BOOLEAN, TRUE,
+                            NULL);
+    }
     g_object_set(G_OBJECT(rtp_out), "caps", rtp_caps, NULL);
     gst_caps_unref(rtp_caps);
 
@@ -631,6 +673,8 @@ bool GStreamerManager::restartWebRtcBin()
 
     g_signal_connect(webrtcbin_, "on-ice-candidate", G_CALLBACK(onIceCandidateCb), this);
     g_signal_connect(webrtcbin_, "notify::ice-connection-state", G_CALLBACK(onIceConnectionStateCb), this);
+    if (connection_mode_ == ConnectionMode::Wifi)
+        g_signal_connect(webrtcbin_, "request-aux-sender", G_CALLBACK(onRequestAuxSender), this);
 
     gst_bin_add(GST_BIN(pipeline_), webrtcbin_);
 
