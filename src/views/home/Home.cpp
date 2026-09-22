@@ -74,12 +74,22 @@ static const char* APP_CSS =
     "window {"
     "  background-color: #1e1e2e;"
     "}"
-    "headerbar, headerbar.titlebar {"
+    "window decoration, window decoration:backdrop {"
+    "  box-shadow: none;"
+    "  border: none;"
+    "  border-radius: 0;"
+    "  margin: 0;"
+    "}"
+    "headerbar, headerbar.titlebar, headerbar:backdrop, headerbar.titlebar:backdrop {"
     "  background-image: none;"
     "  background-color: #181825;"
+    "  border-top: none;"
     "  border-bottom: 1px solid #313244;"
     "  padding: 4px 8px;"
     "  box-shadow: none;"
+    "}"
+    "window:backdrop {"
+    "  background-color: #1e1e2e;"
     "}"
     "headerbar label {"
     "  color: #cdd6f4;"
@@ -195,6 +205,39 @@ static const char* APP_CSS =
     ".version-label {"
     "  color: #7f849c;"
     "  font-size: 11px;"
+    "}"
+    ".mode-selector {"
+    "  border-radius: 10px;"
+    "}"
+    ".mode-btn, .mode-btn:backdrop {"
+    "  background-image: none;"
+    "  background-color: #313244;"
+    "  color: #a6adc8;"
+    "  border: 1px solid #313244;"
+    "  padding: 7px 20px;"
+    "  font-size: 13px;"
+    "  box-shadow: none;"
+    "  outline: none;"
+    "  text-shadow: none;"
+    "  -gtk-icon-shadow: none;"
+    "}"
+    ".mode-btn:hover {"
+    "  background-color: #3b3b52;"
+    "  color: #cdd6f4;"
+    "  box-shadow: none;"
+    "}"
+    ".mode-btn:checked, .mode-btn:checked:backdrop {"
+    "  background-image: none;"
+    "  background-color: #89b4fa;"
+    "  color: #1e1e2e;"
+    "  font-weight: bold;"
+    "  box-shadow: none;"
+    "  text-shadow: none;"
+    "  -gtk-icon-shadow: none;"
+    "}"
+    ".mode-btn:checked:hover {"
+    "  background-color: #89b4fa;"
+    "  box-shadow: none;"
     "}";
 
 Home::Home() {
@@ -266,15 +309,32 @@ Home::Home() {
     gtk_box_pack_start(GTK_BOX(center), icon, FALSE, FALSE, 0);
 
     // Connection mode selector: always visible (unlike the monitor switch, which
-    // sits behind SKREEN_ACTIVE_MODULE_DRIVER).
-    GtkWidget* mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    // sits behind SKREEN_ACTIVE_MODULE_DRIVER). Styled as a segmented control
+    // (icon + label, highlighted when selected) to match the mobile app's
+    // SegmentedButton, instead of plain radio dots.
+    GtkWidget* mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_set_halign(mode_row, GTK_ALIGN_CENTER);
+    gtk_style_context_add_class(gtk_widget_get_style_context(mode_row), "linked");
+    gtk_style_context_add_class(gtk_widget_get_style_context(mode_row), "mode-selector");
 
-    cable_radio_ = gtk_radio_button_new_with_label(nullptr, "Cable");
+    cable_radio_ = gtk_radio_button_new(nullptr);
+    gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(cable_radio_), FALSE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(cable_radio_), "mode-btn");
+    GtkWidget* cable_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_box_pack_start(GTK_BOX(cable_box),
+        gtk_image_new_from_icon_name("network-wired-symbolic", GTK_ICON_SIZE_BUTTON), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(cable_box), gtk_label_new("Cable"), FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(cable_radio_), cable_box);
     gtk_box_pack_start(GTK_BOX(mode_row), cable_radio_, FALSE, FALSE, 0);
 
-    wifi_radio_ = gtk_radio_button_new_with_label_from_widget(
-        GTK_RADIO_BUTTON(cable_radio_), "WiFi");
+    wifi_radio_ = gtk_radio_button_new_from_widget(GTK_RADIO_BUTTON(cable_radio_));
+    gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(wifi_radio_), FALSE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(wifi_radio_), "mode-btn");
+    GtkWidget* wifi_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_box_pack_start(GTK_BOX(wifi_box),
+        gtk_image_new_from_icon_name("network-wireless-symbolic", GTK_ICON_SIZE_BUTTON), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(wifi_box), gtk_label_new("WiFi"), FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(wifi_radio_), wifi_box);
     gtk_box_pack_start(GTK_BOX(mode_row), wifi_radio_, FALSE, FALSE, 0);
 
     connection_mode_handler_id_ = g_signal_connect(
@@ -430,7 +490,7 @@ void Home::setLocalIpAddresses(const std::vector<std::string>& ips) {
         gtk_widget_hide(local_ip_label_);
         return;
     }
-    std::string text = "Tu PC: ";
+    std::string text = "Your PC: ";
     for (size_t i = 0; i < ips.size(); ++i) {
         if (i > 0) text += ", ";
         text += ips[i];
@@ -450,11 +510,11 @@ void Home::setWifiReady(bool ready) {
     reset_status_classes(dot_ctx, lbl_ctx);
 
     if (ready) {
-        gtk_label_set_text(GTK_LABEL(status_label), "Listo para conectar por WiFi");
+        gtk_label_set_text(GTK_LABEL(status_label), "Ready to connect via WiFi");
         gtk_style_context_add_class(dot_ctx, "dot-ready");
         gtk_style_context_add_class(lbl_ctx, "status-ready");
     } else {
-        gtk_label_set_text(GTK_LABEL(status_label), "Selecciona WiFi para ver tu IP");
+        gtk_label_set_text(GTK_LABEL(status_label), "Select WiFi to see your IP");
         gtk_style_context_add_class(dot_ctx, "dot-idle");
         gtk_style_context_add_class(lbl_ctx, "status-idle");
     }
