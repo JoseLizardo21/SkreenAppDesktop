@@ -7,6 +7,15 @@
 // the virtual monitor. See skreen_drive/IOCTL_USAGE.md for the protocol.
 class MonitorControl {
 public:
+    enum class AddResolutionResult {
+        Added,
+        AlreadyListed,  // EEXIST: built-in preset or added before
+        OutOfRange,     // EINVAL: outside the driver's XRES/YRES limits
+        ListFull,       // ENOSPC: driver's extra-mode slots exhausted
+        Unavailable,    // node not opened
+        Failed,         // any other ioctl error
+    };
+
     MonitorControl();
     ~MonitorControl();
 
@@ -21,6 +30,11 @@ public:
     // Returns false (and leaves 'enabled' untouched) on ioctl/availability
     // failure.
     bool isEnabled(bool& enabled) const;
+
+    // Appends width x height to the connector's mode list. It does not change
+    // the active resolution; the user picks it from the system display
+    // settings. Added modes live in the driver's memory until it is reloaded.
+    AddResolutionResult addResolution(unsigned int width, unsigned int height);
 
 private:
     static std::string findNode();

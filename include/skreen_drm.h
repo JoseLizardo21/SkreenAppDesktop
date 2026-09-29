@@ -35,13 +35,10 @@ struct drm_skreen_enable {
 };
 
 /**
- * struct drm_skreen_resolution - Argument for the SKREEN_SET_RESOLUTION /
- * SKREEN_GET_RESOLUTION ioctls.
+ * struct drm_skreen_resolution - Argument for the SKREEN_ADD_RESOLUTION ioctl.
  *
- * @width: display width in pixels. For SKREEN_GET_RESOLUTION this field is
- *	   filled in by the kernel with the current width.
- * @height: display height in pixels. For SKREEN_GET_RESOLUTION this field is
- *	    filled in by the kernel with the current height.
+ * @width: display width in pixels
+ * @height: display height in pixels
  */
 struct drm_skreen_resolution {
 	__u32 width;
@@ -51,8 +48,7 @@ struct drm_skreen_resolution {
 /* Driver-private ioctl numbers, relative to DRM_COMMAND_BASE */
 #define DRM_SKREEN_SET_ENABLED		0x00
 #define DRM_SKREEN_GET_ENABLED		0x01
-#define DRM_SKREEN_SET_RESOLUTION	0x02
-#define DRM_SKREEN_GET_RESOLUTION	0x03
+#define DRM_SKREEN_ADD_RESOLUTION	0x02
 
 #define DRM_IOCTL_SKREEN_SET_ENABLED \
 	DRM_IOW(DRM_COMMAND_BASE + DRM_SKREEN_SET_ENABLED, struct drm_skreen_enable)
@@ -60,11 +56,8 @@ struct drm_skreen_resolution {
 #define DRM_IOCTL_SKREEN_GET_ENABLED \
 	DRM_IOR(DRM_COMMAND_BASE + DRM_SKREEN_GET_ENABLED, struct drm_skreen_enable)
 
-#define DRM_IOCTL_SKREEN_SET_RESOLUTION \
-	DRM_IOW(DRM_COMMAND_BASE + DRM_SKREEN_SET_RESOLUTION, struct drm_skreen_resolution)
-
-#define DRM_IOCTL_SKREEN_GET_RESOLUTION \
-	DRM_IOR(DRM_COMMAND_BASE + DRM_SKREEN_GET_RESOLUTION, struct drm_skreen_resolution)
+#define DRM_IOCTL_SKREEN_ADD_RESOLUTION \
+	DRM_IOW(DRM_COMMAND_BASE + DRM_SKREEN_ADD_RESOLUTION, struct drm_skreen_resolution)
 
 #if defined(__cplusplus)
 }

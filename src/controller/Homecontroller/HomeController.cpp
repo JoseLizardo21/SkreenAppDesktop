@@ -254,6 +254,31 @@ void HomeController::handleOpenSettings() {
                   << " keyframe=" << cfg.keyframe_interval
                   << " speed=" << cfg.encoder_speed << "\n";
     });
+    s->setOnAddResolutionCallback([this](int width, int height, std::string& message) {
+        const std::string res = std::to_string(width) + "x" + std::to_string(height);
+        using Result = MonitorControl::AddResolutionResult;
+        switch (monitor_control_->addResolution(width, height)) {
+        case Result::Added:
+            message = res + " added. Select it in your system display settings.";
+            return true;
+        case Result::AlreadyListed:
+            message = res + " is already in the monitor's resolution list.";
+            return false;
+        case Result::OutOfRange:
+            message = res + " is outside the range supported by the driver.";
+            return false;
+        case Result::ListFull:
+            message = "No more resolutions can be added. Reload the driver to clear the list.";
+            return false;
+        case Result::Unavailable:
+            message = "Virtual monitor driver not available.";
+            return false;
+        case Result::Failed:
+            break;
+        }
+        message = "Failed to add " + res + ".";
+        return false;
+    });
     s->show();
 }
 

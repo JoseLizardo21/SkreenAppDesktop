@@ -100,7 +100,22 @@ static const char* SETTINGS_CSS =
     "button.reset-btn:focus {"
     "  outline: none;"
     "  box-shadow: none;"
+    "}"
+    ".settings-status-ok {"
+    "  color: #a6e3a1;"
+    "  font-size: 11px;"
+    "}"
+    ".settings-status-error {"
+    "  color: #f38ba8;"
+    "  font-size: 11px;"
     "}";
+
+// Must match XRES_MIN/XRES_MAX and YRES_MIN/YRES_MAX in skreen_drive/skreen_drv.h;
+// the driver rejects anything outside these ranges with EINVAL.
+static constexpr int kResWidthMin  = 10;
+static constexpr int kResWidthMax  = 2400;
+static constexpr int kResHeightMin = 10;
+static constexpr int kResHeightMax = 1080;
 
 static GtkWidget* make_row(GtkWidget* grid, int row,
                             const char* label_text,
@@ -179,8 +194,50 @@ Settings::Settings(GtkWindow* parent, const StreamConfig& current) {
     spin_speed_    = make_row(grid, 2, "Encoder Speed",      "1 = best quality   7 = fastest",
                                1,    7,     1,   current.encoder_speed,     "");
 
-    GtkWidget* separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
-    gtk_box_pack_start(GTK_BOX(content), separator, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(content), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+
+    GtkWidget* res_section = gtk_label_new("MONITOR RESOLUTION");
+    gtk_widget_set_halign(res_section, GTK_ALIGN_START);
+    gtk_style_context_add_class(gtk_widget_get_style_context(res_section), "settings-section");
+    gtk_box_pack_start(GTK_BOX(content), res_section, FALSE, FALSE, 0);
+
+    GtkWidget* res_hint = gtk_label_new(
+        "Adds a resolution to the virtual monitor. Select it afterwards "
+        "in your system display settings.");
+    gtk_label_set_line_wrap(GTK_LABEL(res_hint), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(res_hint), 48);
+    gtk_label_set_xalign(GTK_LABEL(res_hint), 0.0f);
+    gtk_style_context_add_class(gtk_widget_get_style_context(res_hint), "settings-hint");
+    gtk_box_pack_start(GTK_BOX(content), res_hint, FALSE, FALSE, 0);
+
+    GtkWidget* res_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_pack_start(GTK_BOX(content), res_row, FALSE, FALSE, 0);
+
+    spin_res_width_ = gtk_spin_button_new_with_range(kResWidthMin, kResWidthMax, 1);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin_res_width_), 1600);
+    gtk_box_pack_start(GTK_BOX(res_row), spin_res_width_, FALSE, FALSE, 0);
+
+    GtkWidget* times = gtk_label_new("\u00d7");
+    gtk_style_context_add_class(gtk_widget_get_style_context(times), "settings-label");
+    gtk_box_pack_start(GTK_BOX(res_row), times, FALSE, FALSE, 0);
+
+    spin_res_height_ = gtk_spin_button_new_with_range(kResHeightMin, kResHeightMax, 1);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin_res_height_), 720);
+    gtk_box_pack_start(GTK_BOX(res_row), spin_res_height_, FALSE, FALSE, 0);
+
+    GtkWidget* add_res_btn = gtk_button_new_with_label("Add");
+    gtk_style_context_add_class(gtk_widget_get_style_context(add_res_btn), "reset-btn");
+    gtk_box_pack_end(GTK_BOX(res_row), add_res_btn, FALSE, FALSE, 0);
+    g_signal_connect(add_res_btn, "clicked", G_CALLBACK(on_add_resolution), this);
+
+    res_status_ = gtk_label_new("");
+    gtk_label_set_line_wrap(GTK_LABEL(res_status_), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(res_status_), 48);
+    gtk_label_set_xalign(GTK_LABEL(res_status_), 0.0f);
+    gtk_widget_set_no_show_all(res_status_, TRUE);
+    gtk_box_pack_start(GTK_BOX(content), res_status_, FALSE, FALSE, 0);
+
+    gtk_box_pack_start(GTK_BOX(content), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
 
     GtkWidget* reset_btn = gtk_button_new_with_label("Reset to factory defaults");
     gtk_style_context_add_class(gtk_widget_get_style_context(reset_btn), "reset-btn");
@@ -227,4 +284,19 @@ void Settings::on_response(GtkDialog* dialog, gint response, gpointer data) {
         self->on_save_(cfg);
     }
     gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+void Settings::on_add_resolution(GtkButton*, gpointer data) {
+    auto* self = static_cast<Settings*>(data);
+    int width  = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(self->spin_res_width_));
+    int height = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(self->spin_res_height_));
+
+    std::string message = "Virtual monitor driver not available";
+    bool ok = self->on_add_resolution_ && self->on_add_resolution_(width, height, message);
+
+    GtkStyleContext* ctx = gtk_widget_get_style_context(self->res_status_);
+    gtk_style_context_remove_class(ctx, ok ? "settings-status-error" : "settings-status-ok");
+    gtk_style_context_add_class(ctx, ok ? "settings-status-ok" : "settings-status-error");
+    gtk_label_set_text(GTK_LABEL(self->res_status_), message.c_str());
+    gtk_widget_show(self->res_status_);
 }

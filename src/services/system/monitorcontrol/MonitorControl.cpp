@@ -1,5 +1,6 @@
 #include "MonitorControl.h"
 
+#include <cerrno>
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
@@ -76,4 +77,26 @@ bool MonitorControl::isEnabled(bool& enabled) const {
     }
     enabled = args.enabled != 0;
     return true;
+}
+
+MonitorControl::AddResolutionResult MonitorControl::addResolution(unsigned int width,
+                                                                  unsigned int height) {
+    if (fd_ < 0)
+        return AddResolutionResult::Unavailable;
+
+    drm_skreen_resolution args{};
+    args.width = width;
+    args.height = height;
+
+    if (ioctl(fd_, DRM_IOCTL_SKREEN_ADD_RESOLUTION, &args) < 0) {
+        switch (errno) {
+        case EEXIST: return AddResolutionResult::AlreadyListed;
+        case EINVAL: return AddResolutionResult::OutOfRange;
+        case ENOSPC: return AddResolutionResult::ListFull;
+        default:
+            std::cerr << "[MonitorControl] DRM_IOCTL_SKREEN_ADD_RESOLUTION: " << strerror(errno) << "\n";
+            return AddResolutionResult::Failed;
+        }
+    }
+    return AddResolutionResult::Added;
 }
