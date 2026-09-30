@@ -93,6 +93,11 @@ private:
     std::chrono::steady_clock::time_point last_frame_time_;
     static constexpr auto kStallThreshold = std::chrono::milliseconds(2000); // a real stall, not the normal gaps of a static screen
 
+    // pipewiresrc re-sends the last frame at this interval while the compositor
+    // delivers nothing (static screen), so a client that connects later still
+    // gets a frame to encode as its first IDR instead of a black screen
+    static constexpr int kPipeWireKeepaliveMs = 500;
+
     void forceKeyframe();
 
     // Watchdog: when Wayland sends no frames (idle window), forces a RECONFIGURE on

@@ -291,6 +291,7 @@ bool GStreamerManager::configurePipeWireSource()
     g_object_set(G_OBJECT(pipewiresrc_),
                  "fd", fd_,
                  "path", g_strdup_printf("%u", node_id_),
+                 "keepalive-time", kPipeWireKeepaliveMs,
                  NULL);
     std::cout << "  ✓ PipeWire configured (fd=" << fd_ << ", node_id=" << node_id_ << ")\n";
     return true;
