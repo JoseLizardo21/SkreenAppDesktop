@@ -1,13 +1,6 @@
 #include "Home.h"
 #include "../../controller/Homecontroller/HomeController.h"
 #include "version.h"
-#include <cstdlib>
-#include <cstring>
-
-bool Home::activeModuleDriver() {
-    const char* env = std::getenv("SKREEN_ACTIVE_MODULE_DRIVER");
-    return env && std::strcmp(env, "1") == 0;
-}
 
 static void on_button_clicked(GtkWidget*, gpointer data) {
     static_cast<Home*>(data)->requestPermissions();
@@ -34,27 +27,10 @@ static void on_wifi_radio_toggled(GtkWidget* radio, gpointer data) {
 // "state" (the real state). We handle "state-set" instead of
 // "notify::active" so we can make the (potentially failing) ioctl call
 // before confirming the new state, and revert the switch if it fails.
-//
-// Turning off the virtual monitor (SET_ENABLED 0) is a point of no return
-// within the current GNOME session: turning it back on afterwards breaks
-// mutter's plane reassignment (it stops showing up in Display Settings
-// until logout). So we confirm with the user before turning it off, and
-// once it's off the switch gets locked so they can't try turning it back
-// on in the same session.
 static gboolean on_monitor_switch_state_set(GtkSwitch* sw, gboolean state, gpointer data) {
     auto* home = static_cast<Home*>(data);
-
-    if (!state && !home->confirmDisableMonitor()) {
-        gtk_switch_set_state(sw, TRUE);
-        return TRUE;
-    }
-
     bool applied = home->monitorToggled(state);
     gtk_switch_set_state(sw, applied ? state : !state);
-
-    if (applied && !state)
-        home->lockMonitorSwitch();
-
     return TRUE;
 }
 
@@ -271,29 +247,27 @@ Home::Home() {
     GtkWidget* outer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(window), outer);
 
-    if (activeModuleDriver()) {
-        GtkWidget* monitor_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-        gtk_widget_set_halign(monitor_box, GTK_ALIGN_END);
-        gtk_widget_set_margin_top(monitor_box, 12);
-        gtk_widget_set_margin_end(monitor_box, 16);
+    GtkWidget* monitor_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_widget_set_halign(monitor_box, GTK_ALIGN_END);
+    gtk_widget_set_margin_top(monitor_box, 12);
+    gtk_widget_set_margin_end(monitor_box, 16);
 
-        GtkWidget* monitor_off_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
-        gtk_style_context_add_class(gtk_widget_get_style_context(monitor_off_icon), "monitor-icon-off");
-        gtk_box_pack_start(GTK_BOX(monitor_box), monitor_off_icon, FALSE, FALSE, 0);
+    GtkWidget* monitor_off_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+    gtk_style_context_add_class(gtk_widget_get_style_context(monitor_off_icon), "monitor-icon-off");
+    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_off_icon, FALSE, FALSE, 0);
 
-        monitor_switch = gtk_switch_new();
-        gtk_widget_set_valign(monitor_switch, GTK_ALIGN_CENTER);
-        gtk_widget_set_tooltip_text(monitor_switch, "Enable monitor");
-        monitor_switch_handler_id_ = g_signal_connect(
-            monitor_switch, "state-set", G_CALLBACK(on_monitor_switch_state_set), this);
-        gtk_box_pack_start(GTK_BOX(monitor_box), monitor_switch, FALSE, FALSE, 0);
+    monitor_switch = gtk_switch_new();
+    gtk_widget_set_valign(monitor_switch, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(monitor_switch, "Enable monitor");
+    monitor_switch_handler_id_ = g_signal_connect(
+        monitor_switch, "state-set", G_CALLBACK(on_monitor_switch_state_set), this);
+    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_switch, FALSE, FALSE, 0);
 
-        GtkWidget* monitor_on_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
-        gtk_style_context_add_class(gtk_widget_get_style_context(monitor_on_icon), "monitor-icon-on");
-        gtk_box_pack_start(GTK_BOX(monitor_box), monitor_on_icon, FALSE, FALSE, 0);
+    GtkWidget* monitor_on_icon = gtk_image_new_from_icon_name("video-display-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
+    gtk_style_context_add_class(gtk_widget_get_style_context(monitor_on_icon), "monitor-icon-on");
+    gtk_box_pack_start(GTK_BOX(monitor_box), monitor_on_icon, FALSE, FALSE, 0);
 
-        gtk_box_pack_start(GTK_BOX(outer), monitor_box, FALSE, FALSE, 0);
-    }
+    gtk_box_pack_start(GTK_BOX(outer), monitor_box, FALSE, FALSE, 0);
 
     GtkWidget* center = gtk_box_new(GTK_ORIENTATION_VERTICAL, 18);
     gtk_widget_set_valign(center, GTK_ALIGN_CENTER);
@@ -308,8 +282,7 @@ Home::Home() {
     gtk_widget_set_halign(icon, GTK_ALIGN_CENTER);
     gtk_box_pack_start(GTK_BOX(center), icon, FALSE, FALSE, 0);
 
-    // Connection mode selector: always visible (unlike the monitor switch, which
-    // sits behind SKREEN_ACTIVE_MODULE_DRIVER). Styled as a segmented control
+    // Connection mode selector, styled as a segmented control
     // (icon + label, highlighted when selected) to match the mobile app's
     // SegmentedButton, instead of plain radio dots.
     GtkWidget* mode_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -420,34 +393,6 @@ bool Home::monitorToggled(bool enabled) {
 void Home::connectionModeToggled(bool wifi_selected) {
     if (on_connection_mode_changed_callback_)
         on_connection_mode_changed_callback_(wifi_selected ? ConnectionMode::Wifi : ConnectionMode::Cable);
-}
-
-bool Home::confirmDisableMonitor() {
-    GtkWidget* dialog = gtk_message_dialog_new(
-        GTK_WINDOW(window),
-        static_cast<GtkDialogFlags>(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
-        GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
-        "Turn off the virtual monitor?");
-    gtk_message_dialog_format_secondary_text(
-        GTK_MESSAGE_DIALOG(dialog),
-        "Due to a GNOME limitation with virtual monitors, once it's turned "
-        "off you'll need to log out and back in to turn it on again.");
-    gtk_dialog_add_button(GTK_DIALOG(dialog), "Cancel", GTK_RESPONSE_CANCEL);
-    gtk_dialog_add_button(GTK_DIALOG(dialog), "Turn off", GTK_RESPONSE_ACCEPT);
-    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
-
-    int response = gtk_dialog_run(GTK_DIALOG(dialog));
-    gtk_widget_destroy(dialog);
-
-    return response == GTK_RESPONSE_ACCEPT;
-}
-
-void Home::lockMonitorSwitch() {
-    if (!monitor_switch) return;
-    gtk_widget_set_sensitive(monitor_switch, FALSE);
-    gtk_widget_set_tooltip_text(
-        monitor_switch,
-        "Monitor off: log out and back in to turn it on again");
 }
 
 void Home::setMonitorSwitchState(bool enabled) {

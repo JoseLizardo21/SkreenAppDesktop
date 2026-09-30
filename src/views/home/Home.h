@@ -36,13 +36,6 @@ class Home {
         bool monitorToggled(bool enabled);
         // Invoked by the WiFi radio's GTK handler when the user changes the mode.
         void connectionModeToggled(bool wifi_selected);
-        // Shows the confirmation dialog for turning off the monitor. Returns
-        // true if the user confirmed.
-        bool confirmDisableMonitor();
-        // Locks the switch in its current position (insensitive) because
-        // turning the monitor back on in this GNOME session would break
-        // mutter.
-        void lockMonitorSwitch();
         // Reflects the real monitor state on the switch without triggering
         // setOnMonitorToggleCallback (used when initializing the UI).
         void setMonitorSwitchState(bool enabled);
@@ -60,11 +53,6 @@ class Home {
         void setConnectionModeSelectorEnabled(bool enabled);
         GtkWindow* getGtkWindow() { return GTK_WINDOW(window); }
     private:
-        // Feature flag for the monitor enable/disable switch, read from the
-        // SKREEN_ACTIVE_MODULE_DRIVER env var (set to "1" to enable). Off by
-        // default until the feature is ready to ship.
-        static bool activeModuleDriver();
-
         GtkWidget* window;
         GtkWidget* monitor_switch = nullptr;
         gulong monitor_switch_handler_id_ = 0;

@@ -31,12 +31,6 @@ make
 ./skreen_desktop
 ```
 
-To enable the monitor on/off switch (disabled by default):
-
-```bash
-SKREEN_ACTIVE_MODULE_DRIVER=1 ./skreen_desktop
-```
-
 # Package as RPM
 
 Make sure you have `rpmbuild` installed:

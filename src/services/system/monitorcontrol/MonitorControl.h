@@ -12,18 +12,17 @@ public:
         AlreadyListed,  // EEXIST: built-in preset or added before
         OutOfRange,     // EINVAL: outside the driver's XRES/YRES limits
         ListFull,       // ENOSPC: driver's extra-mode slots exhausted
-        Unavailable,    // node not opened
+        Unavailable,    // node could not be opened
         Failed,         // any other ioctl error
     };
 
     MonitorControl();
-    ~MonitorControl();
 
     MonitorControl(const MonitorControl&) = delete;
     MonitorControl& operator=(const MonitorControl&) = delete;
 
-    // True if the skreen DRM node was found and opened successfully.
-    bool isAvailable() const { return fd_ >= 0; }
+    // True if the skreen DRM node exists and can be opened read/write.
+    bool isAvailable() const;
 
     bool setEnabled(bool enabled);
 
@@ -38,9 +37,9 @@ public:
 
 private:
     static std::string findNode();
+    int openNode() const;
 
     std::string node_;
-    int fd_ = -1;
 };
 
 #endif
