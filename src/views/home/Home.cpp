@@ -47,6 +47,15 @@ void Home::openSettings() {
 }
 
 static const char* APP_CSS =
+    // Drop the theme's white inset highlight and text/icon shadows on every
+    // button. Declared first so class-specific rules below (e.g. the glow on
+    // .transmit-btn) still win at equal specificity.
+    "button, button:hover, button:active, button:checked,"
+    "button:focus, button:disabled, button:backdrop {"
+    "  box-shadow: none;"
+    "  text-shadow: none;"
+    "  -gtk-icon-shadow: none;"
+    "}"
     "window {"
     "  background-color: #1e1e2e;"
     "}"
