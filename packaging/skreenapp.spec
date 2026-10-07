@@ -30,25 +30,17 @@ Requires:       gstreamer1-plugins-bad-free
 Requires:       libnice-gstreamer1
 Requires:       gstreamer1-vaapi
 Requires:       android-tools
-Requires:       %{dkms_name}-dkms = %{driver_version}
-
-%description
-SkreenApp Desktop allows you to stream your desktop screen to a mobile
-device using the SkreenApp mobile application.
-
-%package -n %{dkms_name}-dkms
-Version:        %{driver_version}
-Summary:        Skreen virtual monitor kernel driver (DKMS)
-License:        GPL-2.0-only
-BuildArch:      noarch
+# Virtual monitor kernel driver, built by DKMS for every installed kernel
 Requires:       dkms
 Requires:       kernel-devel
 Requires:       make
 Requires:       gcc
 
-%description -n %{dkms_name}-dkms
-DRM kernel driver that exposes the virtual monitor used by SkreenApp
-Desktop. It is built with DKMS, so it is rebuilt on every kernel update.
+%description
+SkreenApp Desktop allows you to stream your desktop screen to a mobile
+device using the SkreenApp mobile application. It includes the DRM kernel
+driver that exposes the virtual monitor, built with DKMS so it is rebuilt
+on every kernel update.
 
 %prep
 %autosetup -n %{name}-%{version}
@@ -88,24 +80,23 @@ install -Dm644 packaging/skreen-driver.conf \
 
 %post
 update-desktop-database %{_datadir}/applications &>/dev/null || :
-
-%postun
-update-desktop-database %{_datadir}/applications &>/dev/null || :
-
-%post -n %{dkms_name}-dkms
-# On upgrade the new %%post runs before the old %%preun: the new version is
-# added and installed first, then the old one is removed from the DKMS tree.
+# On upgrade the new %%post runs before the old %%preun: the new driver
+# version is added and installed first, then the old one is removed from the
+# DKMS tree.
 dkms add -m %{dkms_name} -v %{driver_version} -q --rpm_safe_upgrade || :
 dkms build -m %{dkms_name} -v %{driver_version} -q || :
 dkms install -m %{dkms_name} -v %{driver_version} -q --force || :
 
-%preun -n %{dkms_name}-dkms
+%preun
 if [ $1 -eq 0 ]; then
     modprobe -r skreen_driver &>/dev/null || :
 fi
 dkms remove -m %{dkms_name} -v %{driver_version} -q --all --rpm_safe_upgrade || :
 
-%posttrans -n %{dkms_name}-dkms
+%postun
+update-desktop-database %{_datadir}/applications &>/dev/null || :
+
+%posttrans
 # Try to switch to the new module right away. While the compositor holds the
 # DRM device, unloading fails and the new module is loaded on the next boot;
 # the app detects the version mismatch and asks the user to reboot.
@@ -116,8 +107,6 @@ modprobe skreen_driver &>/dev/null || :
 %{_bindir}/skreen_desktop
 %{_datadir}/pixmaps/skreenapp.png
 %{_datadir}/applications/skreenapp.desktop
-
-%files -n %{dkms_name}-dkms
 %{_usrsrc}/%{dkms_name}-%{driver_version}
 %{_prefix}/lib/modules-load.d/skreen-driver.conf
 

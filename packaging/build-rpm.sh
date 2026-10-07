@@ -34,4 +34,4 @@ rpmbuild -ba --define "driver_version $DRIVER_VERSION" ~/rpmbuild/SPECS/skreenap
 
 echo ""
 echo "Done! RPM located at:"
-find ~/rpmbuild/RPMS -name "${NAME}-${VERSION}-*.rpm" -o -name "skreen-driver-dkms-${DRIVER_VERSION}-*.rpm"
+find ~/rpmbuild/RPMS -name "${NAME}-${VERSION}-*.rpm"

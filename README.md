@@ -33,13 +33,10 @@ make
 
 # Packaging and the driver
 
-The packages bundle the virtual monitor kernel driver from `../skreen_drive`
-(override with `SKREEN_DRIVER_DIR=/path ./packaging/build-*.sh`). Each build
-produces two packages:
-
-- `skreenapp`: the desktop app. It depends on the exact driver version.
-- `skreen-driver-dkms`: the driver sources, built by DKMS for every installed
-  kernel and loaded on boot (`/usr/lib/modules-load.d/skreen-driver.conf`).
+The package bundles the virtual monitor kernel driver from `../skreen_drive`
+(override with `SKREEN_DRIVER_DIR=/path ./packaging/build-*.sh`). Its sources
+are installed to `/usr/src/skreen-driver-<version>/`, built by DKMS for every
+installed kernel and loaded on boot (`/usr/lib/modules-load.d/skreen-driver.conf`).
 
 To ship a new driver, bump `skreen_drive/VERSION` and rebuild the packages.
 On upgrade the new module is installed right away, but if the virtual
@@ -67,13 +64,12 @@ Then run:
 The `.rpm` package will be placed in `~/rpmbuild/RPMS/`. To install it:
 
 ```bash
-sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm \
-    ~/rpmbuild/RPMS/noarch/skreen-driver-dkms-*.rpm
+sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm
 ```
 
 To uninstall it:
 ```bash
-sudo dnf remove skreenapp skreen-driver-dkms
+sudo dnf remove skreenapp
 ```
 
 # Package as DEB
@@ -84,17 +80,16 @@ Run:
 ./packaging/build-deb.sh
 ```
 
-The `.deb` packages will be placed in `packaging/`. To install them:
+The `.deb` package will be placed in `packaging/`. To install it:
 
 ```bash
-sudo apt install ./packaging/skreenapp_0.1.0_amd64.deb \
-    ./packaging/skreen-driver-dkms_*_all.deb
+sudo apt install ./packaging/skreenapp_0.1.0_amd64.deb
 ```
 
 To uninstall it:
 
 ```bash
-sudo apt remove skreenapp skreen-driver-dkms
+sudo apt remove skreenapp
 ```
 
 # USB connection
