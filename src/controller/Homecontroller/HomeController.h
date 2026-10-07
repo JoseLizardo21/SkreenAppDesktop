@@ -29,6 +29,9 @@ public:
     bool handleMonitorToggle(bool enabled);
     void handleConnectionModeChanged(ConnectionMode mode);
 private:
+    // Warns the user if the skreen driver is missing or if the loaded module
+    // is older than the one installed with this version of the app.
+    void checkDriverVersion();
     Home* view_;
     bool device_connected_ = false;
     ConnectionMode connection_mode_{ConnectionMode::Cable};

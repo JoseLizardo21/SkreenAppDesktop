@@ -51,6 +51,10 @@ class Home {
         void setLocalIpAddresses(const std::vector<std::string>& ips);
         // Disables the Cable/WiFi selector while a streaming session is active.
         void setConnectionModeSelectorEnabled(bool enabled);
+        // Non-blocking warning dialog about the kernel driver state (not
+        // loaded / update pending a reboot). Shown once the main loop runs so
+        // it appears on top of the main window.
+        void showDriverNotice(const std::string& title, const std::string& message);
         GtkWindow* getGtkWindow() { return GTK_WINDOW(window); }
     private:
         GtkWidget* window;

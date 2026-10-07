@@ -35,6 +35,13 @@ public:
     // settings. Added modes live in the driver's memory until it is reloaded.
     AddResolutionResult addResolution(unsigned int width, unsigned int height);
 
+    // True if the skreen_driver kernel module is currently loaded.
+    static bool isDriverLoaded();
+
+    // MODULE_VERSION of the loaded module, or an empty string if it is not
+    // loaded or was built before the driver exposed its version.
+    static std::string loadedDriverVersion();
+
 private:
     static std::string findNode();
     int openNode() const;

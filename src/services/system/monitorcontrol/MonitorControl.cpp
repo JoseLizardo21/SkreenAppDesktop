@@ -4,6 +4,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <fstream>
 #include <iostream>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -13,6 +14,7 @@
 namespace {
 constexpr const char* kSysfsDrmDir = "/sys/devices/platform/skreen/drm";
 constexpr const char* kDefaultNode = "/dev/dri/card1";
+constexpr const char* kSysfsModuleDir = "/sys/module/skreen_driver";
 }  // namespace
 
 std::string MonitorControl::findNode() {
@@ -119,4 +121,15 @@ MonitorControl::AddResolutionResult MonitorControl::addResolution(unsigned int w
         }
     }
     return AddResolutionResult::Added;
+}
+
+bool MonitorControl::isDriverLoaded() {
+    return access(kSysfsModuleDir, F_OK) == 0;
+}
+
+std::string MonitorControl::loadedDriverVersion() {
+    std::ifstream file(std::string(kSysfsModuleDir) + "/version");
+    std::string version;
+    std::getline(file, version);
+    return version;
 }

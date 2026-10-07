@@ -495,3 +495,24 @@ void Home::setTransmitting(bool transmitting) {
 void Home::show() {
     gtk_widget_show_all(window);
 }
+
+void Home::showDriverNotice(const std::string& title, const std::string& message) {
+    struct Notice {
+        GtkWindow* parent;
+        std::string title;
+        std::string message;
+    };
+    auto* notice = new Notice{GTK_WINDOW(window), title, message};
+
+    g_idle_add([](gpointer data) -> gboolean {
+        std::unique_ptr<Notice> n(static_cast<Notice*>(data));
+        GtkWidget* dialog = gtk_message_dialog_new(
+            n->parent, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_WARNING,
+            GTK_BUTTONS_OK, "%s", n->title.c_str());
+        gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s",
+                                                 n->message.c_str());
+        g_signal_connect(dialog, "response", G_CALLBACK(gtk_widget_destroy), nullptr);
+        gtk_widget_show(dialog);
+        return G_SOURCE_REMOVE;
+    }, notice);
+}

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <glib.h>
 #include <nlohmann/json.hpp>
+#include "version.h"
 
 using json = nlohmann::json;
 
@@ -27,6 +28,8 @@ HomeController::HomeController(Home* home)
     view_->setOnSettingsCallback([this]() { handleOpenSettings(); });
     view_->setOnMonitorToggleCallback([this](bool enabled) { return handleMonitorToggle(enabled); });
     view_->setOnConnectionModeChangedCallback([this](ConnectionMode mode) { handleConnectionModeChanged(mode); });
+
+    checkDriverVersion();
 
     bool monitor_enabled = false;
     if (monitor_control_->isEnabled(monitor_enabled))
@@ -62,6 +65,34 @@ HomeController::HomeController(Home* home)
         }, v);
     });
     adb_monitor_->start();
+}
+
+// The driver package replaces the module on disk, but a module in use by the
+// compositor cannot be unloaded, so the new version only takes effect after a
+// reboot. A mismatch here means that reboot is still pending.
+void HomeController::checkDriverVersion() {
+    const std::string expected = SKREEN_DRIVER_VERSION;
+    if (expected.empty())
+        return;
+
+    if (!MonitorControl::isDriverLoaded()) {
+        view_->showDriverNotice(
+            "Skreen driver not loaded",
+            "The virtual monitor driver is not running. Restart your computer to "
+            "load it. If Secure Boot is enabled, make sure the DKMS signing key "
+            "was enrolled (mokutil).");
+        return;
+    }
+
+    const std::string loaded = MonitorControl::loadedDriverVersion();
+    if (loaded != expected) {
+        std::cerr << "[HomeController] Driver version mismatch: loaded '" << loaded
+                  << "', expected '" << expected << "'\n";
+        view_->showDriverNotice(
+            "Restart required",
+            "A new version of the Skreen driver (" + expected + ") was installed. "
+            "Restart your computer to finish the update.");
+    }
 }
 
 void HomeController::handleConnectionModeChanged(ConnectionMode mode) {

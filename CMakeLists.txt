@@ -16,6 +16,18 @@ else()
   set(APP_VERSION "${GIT_VERSION}")
 endif()
 
+# Driver version this build is shipped with (skreen_drive/VERSION). The app
+# compares it with the loaded module to detect a pending driver update.
+set(SKREEN_DRIVER_DIR "${CMAKE_SOURCE_DIR}/../skreen_drive"
+    CACHE PATH "Path to the skreen_drive kernel driver sources")
+if(EXISTS "${SKREEN_DRIVER_DIR}/VERSION")
+  file(STRINGS "${SKREEN_DRIVER_DIR}/VERSION" SKREEN_DRIVER_VERSION LIMIT_COUNT 1)
+  configure_file("${SKREEN_DRIVER_DIR}/VERSION" "${CMAKE_BINARY_DIR}/driver_version.stamp" COPYONLY)
+else()
+  message(WARNING "skreen_drive/VERSION not found in ${SKREEN_DRIVER_DIR}; driver version check disabled")
+  set(SKREEN_DRIVER_VERSION "")
+endif()
+
 configure_file(
   ${CMAKE_SOURCE_DIR}/include/version.h.in
   ${CMAKE_BINARY_DIR}/version.h
