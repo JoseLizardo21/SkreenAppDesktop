@@ -28,6 +28,8 @@ public:
     void handleStopCapture();
     bool handleMonitorToggle(bool enabled);
     void handleConnectionModeChanged(ConnectionMode mode);
+    // Called once the GTK main loop has exited, before the process ends.
+    void handleAppExit();
 private:
     // Warns the user if the skreen driver is missing or if the loaded module
     // is older than the one installed with this version of the app.

@@ -276,6 +276,14 @@ bool HomeController::handleMonitorToggle(bool enabled) {
     return true;
 }
 
+void HomeController::handleAppExit() {
+    // Turn the virtual monitor off like the switch does, so the desktop does
+    // not keep extending onto a screen nobody can see once the app is gone.
+    bool monitor_enabled = false;
+    if (monitor_control_ && monitor_control_->isEnabled(monitor_enabled) && monitor_enabled)
+        handleMonitorToggle(false);
+}
+
 void HomeController::handleOpenSettings() {
     auto* s = new Settings(view_->getGtkWindow(), config_);
     s->setOnSaveCallback([this](StreamConfig cfg) {
