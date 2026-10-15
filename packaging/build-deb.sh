@@ -13,7 +13,7 @@ sudo apt install -y \
     libdbus-1-dev \
     git
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 NAME="skreenapp"
 ARCH=$(dpkg --print-architecture)
 PROJ_DIR="$(cd "$(dirname "$0")/.." && pwd)"

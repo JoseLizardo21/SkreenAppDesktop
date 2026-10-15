@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 NAME="skreenapp"
 PROJ_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DRIVER_DIR="${SKREEN_DRIVER_DIR:-$PROJ_DIR/../skreen_drive}"

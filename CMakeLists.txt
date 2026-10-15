@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(SkreenDesktop VERSION 0.1.0)
+project(SkreenDesktop VERSION 0.1.1)
 
 # Version with git hash for development builds (e.g. v0.1.0-3-gabcd123)
 execute_process(

@@ -3,7 +3,7 @@
 %global dkms_name skreen-driver
 
 Name:           skreenapp
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Desktop app for screen streaming to mobile via SkreenApp
 License:        Proprietary
@@ -111,5 +111,8 @@ modprobe skreen_driver &>/dev/null || :
 %{_prefix}/lib/modules-load.d/skreen-driver.conf
 
 %changelog
+* Thu Oct 15 2026 Lizardo <jose.212002lizardo@gmail.com> - 0.1.1-1
+- Release 0.1.1
+
 * Tue May 27 2026 Lizardo <jose.212002lizardo@gmail.com> - 0.1.0-1
 - Initial RPM package

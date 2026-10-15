@@ -64,7 +64,7 @@ Then run:
 The `.rpm` package will be placed in `~/rpmbuild/RPMS/`. To install it:
 
 ```bash
-sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.0-1.*.rpm
+sudo dnf install ~/rpmbuild/RPMS/x86_64/skreenapp-0.1.1-1.*.rpm
 ```
 
 To uninstall it:
@@ -83,7 +83,7 @@ Run:
 The `.deb` package will be placed in `packaging/`. To install it:
 
 ```bash
-sudo apt install ./packaging/skreenapp_0.1.0_amd64.deb
+sudo apt install ./packaging/skreenapp_0.1.1_amd64.deb
 ```
 
 To uninstall it:
