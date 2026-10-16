@@ -1,4 +1,5 @@
 .vscode/
 output/
-.claude
+.claude/*
+!.claude/skills/
 build/
